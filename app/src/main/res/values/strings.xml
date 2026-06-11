@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">Offnetic</string>
+    <string name="permission_bluetooth_rationale">Used only for local device discovery, never stored or shared</string>
+    <string name="permission_location_rationale">Required by Android for Wi-Fi Direct and Bluetooth scanning</string>
+    <string name="permission_camera_rationale">Used to scan QR codes when adding trusted contacts</string>
+    <string name="permission_microphone_rationale">Powers end-to-end encrypted voice messages and calls</string>
+    <string name="permission_notifications_rationale">Get pinged when a trusted contact is physically nearby</string>
+    <string name="permission_storage_rationale">Required to send files and media to contacts</string>
+</resources>

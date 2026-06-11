@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ic_launcher_background">#0A0A0A</color>
+    <color name="design_default_color_primary">#FFFFFF</color>
+    <color name="design_default_color_primary_dark">#FFFFFF</color>
+    <color name="design_default_color_primary_variant">#FFFFFF</color>
+    <color name="design_default_color_secondary">#4ADE80</color>
+    <color name="design_default_color_secondary_variant">#4ADE80</color>
+    <color name="design_default_color_on_primary">#0A0A0A</color>
+    <color name="design_default_color_on_secondary">#0A0A0A</color>
+    <color name="design_default_color_on_background">#FFFFFF</color>
+    <color name="design_default_color_on_surface">#FFFFFF</color>
+    <color name="design_default_color_on_error">#FFFFFF</color>
+    <color name="design_default_color_error">#EF4444</color>
+    <color name="design_default_color_background">#0A0A0A</color>
+    <color name="design_default_color_surface">#141414</color>
+</resources>
