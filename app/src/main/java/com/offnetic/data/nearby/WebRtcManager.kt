@@ -873,15 +873,24 @@ class WebRtcManager(
     private fun cleanupPeerConnection(peerPublicKey: String) {
         Timber.d("cleanupPeerConnection: ${peerPublicKey.take(8)}...")
         disconnectGraceJobs.remove(peerPublicKey)?.cancel()
-        dataChannels.remove(peerPublicKey)?.close()
-        val pc = peerConnections.remove(peerPublicKey)
-        pc?.close()
+        dataChannels.remove(peerPublicKey)?.let {
+            it.close()
+            it.dispose()
+        }
+        // pc.dispose() also disposes the senders' attached local tracks —
+        // don't dispose tracks manually or they get freed twice.
+        peerConnections.remove(peerPublicKey)?.let {
+            it.close()
+            it.dispose()
+        }
 
-        videoCapturers[peerPublicKey]?.stopCapture()
-        videoCapturers.remove(peerPublicKey)
+        videoCapturers.remove(peerPublicKey)?.let {
+            try { it.stopCapture() } catch (e: Exception) { Timber.w(e, "stopCapture failed") }
+            it.dispose()
+        }
         surfaceTextureHelpers.remove(peerPublicKey)?.dispose()
-        videoSources.remove(peerPublicKey)
-        audioSources.remove(peerPublicKey)
+        videoSources.remove(peerPublicKey)?.dispose()
+        audioSources.remove(peerPublicKey)?.dispose()
         localVideoTracks.remove(peerPublicKey)
         localAudioTracks.remove(peerPublicKey)
         remoteVideoTracks.remove(peerPublicKey)
@@ -903,16 +912,11 @@ class WebRtcManager(
     }
 
     fun destroy() {
-        dataChannels.values.forEach { it.close() }
-        dataChannels.clear()
+        val peers = (peerConnections.keys + dataChannels.keys + videoCapturers.keys +
+            videoSources.keys + audioSources.keys).toSet()
+        peers.forEach { cleanupPeerConnection(it) }
         disconnectGraceJobs.values.forEach { it.cancel() }
         disconnectGraceJobs.clear()
-        peerConnections.values.forEach { it.close() }
-        peerConnections.clear()
-        videoCapturers.values.forEach { it.stopCapture() }
-        videoCapturers.clear()
-        videoSources.clear()
-        audioSources.clear()
         localVideoTracks.clear()
         localAudioTracks.clear()
         remoteVideoTracks.clear()

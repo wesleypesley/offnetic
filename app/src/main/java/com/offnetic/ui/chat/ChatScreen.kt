@@ -108,23 +108,7 @@ fun ChatScreen(
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
-        uri?.let { selectedUri ->
-            try {
-                context.contentResolver.takePersistableUriPermission(
-                    selectedUri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
-                )
-            } catch (_: SecurityException) {}
-            val fileUri = if (selectedUri.scheme == "content") {
-                val tempFile = java.io.File(context.cacheDir, "upload_${System.currentTimeMillis()}")
-                context.contentResolver.openInputStream(selectedUri)?.use { input ->
-                    tempFile.outputStream().use { output -> input.copyTo(output) }
-                }
-                "file://${tempFile.absolutePath}"
-            } else {
-                selectedUri.toString()
-            }
-            viewModel.sendFile(fileUri)
-        }
+        uri?.let { viewModel.sendFile(it) }
     }
 
     LaunchedEffect(messages.size) {

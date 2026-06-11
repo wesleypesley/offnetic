@@ -42,7 +42,6 @@ import kotlinx.coroutines.launch
 import org.json.JSONObject
 import timber.log.Timber
 import java.io.File
-import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
@@ -100,7 +99,9 @@ class NcapManagerImpl @Inject constructor(
     private val preKeyBundleRetries = ConcurrentHashMap<String, ByteArray>()
     private val identityRetries = ConcurrentHashMap<String, ByteArray>()
     private val heartbeatJobs = ConcurrentHashMap<String, kotlinx.coroutines.Job>()
-    private val pendingFileMetas = ConcurrentHashMap<String, java.util.ArrayDeque<FileMeta>>()
+    private val pendingFileMetas = ConcurrentHashMap<Long, FileMeta>()
+    private val incomingFilePayloads = ConcurrentHashMap<Long, Payload>()
+    private val outgoingFileTransfers = ConcurrentHashMap<Long, CompletableDeferred<Unit>>()
 
     private val lifecycleCallback = object : ConnectionLifecycleCallback() {
         override fun onConnectionInitiated(endpointId: String, connectionInfo: ConnectionInfo) {
@@ -157,20 +158,32 @@ class NcapManagerImpl @Inject constructor(
                     android.util.Log.e("NcapConn", "Sending PRE_KEY_BUNDLE → ${publicKey.take(12)}...")
 
                     shatteredSessionBundles.remove(publicKey)?.let { buffered ->
-                        sendPayload(endpointId, buffered)
-                        Timber.d("Buffered shattered session reset sent to ${publicKey.take(8)}...")
+                        try {
+                            sendPayload(endpointId, buffered)
+                            Timber.d("Buffered shattered session reset sent to ${publicKey.take(8)}...")
+                        } catch (e: Exception) {
+                            shatteredSessionBundles[publicKey] = buffered
+                        }
                         return@launch
                     }
 
                     preKeyBundleRetries.remove(publicKey)?.let { bufferedBundle ->
-                        sendPayload(endpointId, bufferedBundle)
-                        Timber.d("Buffered PRE_KEY_BUNDLE retry sent to ${publicKey.take(8)}...")
+                        try {
+                            sendPayload(endpointId, bufferedBundle)
+                            Timber.d("Buffered PRE_KEY_BUNDLE retry sent to ${publicKey.take(8)}...")
+                        } catch (e: Exception) {
+                            preKeyBundleRetries[publicKey] = bufferedBundle
+                        }
                         return@launch
                     }
 
                     identityRetries.remove(publicKey)?.let { bufferedIdentity ->
-                        sendPayload(endpointId, bufferedIdentity)
-                        Timber.d("Buffered INITIAL_IDENTITY retry sent to ${publicKey.take(8)}...")
+                        try {
+                            sendPayload(endpointId, bufferedIdentity)
+                            Timber.d("Buffered INITIAL_IDENTITY retry sent to ${publicKey.take(8)}...")
+                        } catch (e: Exception) {
+                            identityRetries[publicKey] = bufferedIdentity
+                        }
                     }
 
                     try {
@@ -321,8 +334,12 @@ class NcapManagerImpl @Inject constructor(
         connectionsClient.stopDiscovery()
         isDiscovering = false
         _nearbyState.value = if (isAdvertising) NearbyState.Advertising else NearbyState.Idle
-        endpointPeers.clear()
-        _peers.value = emptyList()
+        // Keep connected/connecting peers — only drop discovered-but-unconnected ones
+        endpointPeers.entries.removeIf {
+            it.value.connectionState != ConnectionState.CONNECTED &&
+                it.value.connectionState != ConnectionState.CONNECTING
+        }
+        emitPeers()
         Timber.d("Discovery stopped")
     }
 
@@ -423,6 +440,7 @@ class NcapManagerImpl @Inject constructor(
             }
         } catch (e: Exception) {
             Timber.w(e, "sendPayload: failed to $endpointId — ${e.message}")
+            throw e
         }
     }
 
@@ -431,7 +449,8 @@ class NcapManagerImpl @Inject constructor(
         fileUri: String,
         fileName: String,
         fileSize: Long,
-        mimeType: String
+        mimeType: String,
+        durationLabel: String?
     ) {
         val MAX_FILE_SIZE = 100L * 1024 * 1024
         if (fileSize > MAX_FILE_SIZE) {
@@ -441,13 +460,18 @@ class NcapManagerImpl @Inject constructor(
         val identity = identityDao.getIdentity()
         val myPublicKey = identity?.publicKey ?: throw IllegalStateException("No identity")
 
-        val transferId = UUID.randomUUID().toString()
+        val file = java.io.File(fileUri.removePrefix("file://"))
+        if (!file.exists()) throw java.io.FileNotFoundException(fileUri)
+        // Create the payload first so its id can correlate the metadata on the receiver.
+        val filePayload = Payload.fromFile(file)
+
         val metaJson = JSONObject().apply {
-            put("transferId", transferId)
+            put("payloadId", filePayload.id)
             put("fileName", fileName)
             put("fileSize", fileSize)
             put("mimeType", mimeType)
             put("senderPublicKey", myPublicKey)
+            durationLabel?.let { put("duration", it) }
         }
 
         val metaEnvelope = NcapEnvelope.Plain(
@@ -457,16 +481,17 @@ class NcapManagerImpl @Inject constructor(
         )
         sendPayload(endpointId, metaEnvelope.toBytes())
 
-        val file = java.io.File(fileUri.removePrefix("file://"))
-        val filePayload = if (file.exists()) {
-            Payload.fromFile(file)
-        } else {
-            Payload.fromFile(java.io.File(fileUri))
+        // Suspend until the transfer completes (SUCCESS) or fails (FAILURE/CANCELED),
+        // reported via onPayloadTransferUpdate.
+        val transferDone = CompletableDeferred<Unit>()
+        outgoingFileTransfers[filePayload.id] = transferDone
+        try {
+            connectionsClient.sendPayload(endpointId, filePayload)
+                .addOnFailureListener { e -> transferDone.completeExceptionally(e) }
+            transferDone.await()
+        } finally {
+            outgoingFileTransfers.remove(filePayload.id)
         }
-        connectionsClient.sendPayload(endpointId, filePayload)
-            .addOnFailureListener { e ->
-                Timber.e(e, "sendFile: failed to send file payload for $transferId")
-            }
     }
 
     override suspend fun sendCallSignal(
@@ -482,19 +507,69 @@ class NcapManagerImpl @Inject constructor(
             payloadType = payloadType,
             payload = payload
         )
-        sendPayload(endpointId, envelope.toBytes())
+        try {
+            sendPayload(endpointId, envelope.toBytes())
+        } catch (e: Exception) {
+            Timber.w(e, "sendCallSignal: $payloadType failed to $endpointId")
+        }
     }
 
     private fun createPayloadCallback(endpointId: String, publicKey: String): PayloadCallback {
         return object : PayloadCallback() {
             override fun onPayloadReceived(endpointId: String, payload: Payload) {
+                if (payload.type == Payload.Type.FILE) {
+                    // FILE payloads arrive when the transfer STARTS; the file is only
+                    // complete on PayloadTransferUpdate SUCCESS — stash until then.
+                    incomingFilePayloads[payload.id] = payload
+                    return
+                }
                 scope.launch {
                     handleIncomingPayload(endpointId, publicKey, payload)
                 }
             }
 
             override fun onPayloadTransferUpdate(endpointId: String, update: PayloadTransferUpdate) {
+                when (update.status) {
+                    PayloadTransferUpdate.Status.SUCCESS -> {
+                        outgoingFileTransfers.remove(update.payloadId)?.complete(Unit)
+                        incomingFilePayloads.remove(update.payloadId)?.let { payload ->
+                            scope.launch {
+                                handleIncomingFile(endpointId, publicKey, payload)
+                            }
+                        }
+                    }
+                    PayloadTransferUpdate.Status.FAILURE,
+                    PayloadTransferUpdate.Status.CANCELED -> {
+                        outgoingFileTransfers.remove(update.payloadId)
+                            ?.completeExceptionally(java.io.IOException("File transfer failed (status=${update.status})"))
+                        if (incomingFilePayloads.remove(update.payloadId) != null) {
+                            handleFailedIncomingFile(publicKey, update.payloadId)
+                        } else {
+                            pendingFileMetas.remove(update.payloadId)
+                        }
+                    }
+                    else -> { /* IN_PROGRESS */ }
+                }
             }
+        }
+    }
+
+    private fun handleFailedIncomingFile(senderPublicKey: String, payloadId: Long) {
+        val meta = pendingFileMetas.remove(payloadId)
+        scope.launch {
+            val entity = com.offnetic.data.local.db.entity.Message(
+                sessionId = senderPublicKey,
+                chatId = senderPublicKey,
+                senderPublicKey = senderPublicKey,
+                content = "File transfer failed" + (meta?.fileName?.let { ": $it" } ?: ""),
+                type = com.offnetic.data.local.db.entity.Message.TYPE_FILE,
+                timestamp = System.currentTimeMillis(),
+                isSent = false,
+                isRead = false
+            )
+            messageDao.insert(entity)
+            _incomingMessages.emit(com.offnetic.domain.model.Message.fromEntity(entity))
+            Timber.w("Incoming file transfer failed from ${senderPublicKey.take(8)}... (payloadId=$payloadId)")
         }
     }
 
@@ -506,11 +581,6 @@ class NcapManagerImpl @Inject constructor(
         val blocked = blockedPeerDao.isBlocked(senderPublicKey)
         if (blocked) {
             Timber.d("Blocked peer payload dropped: ${senderPublicKey.take(8)}...")
-            return
-        }
-
-        if (payload.type == Payload.Type.FILE) {
-            handleIncomingFile(endpointId, senderPublicKey, payload)
             return
         }
 
@@ -560,13 +630,18 @@ class NcapManagerImpl @Inject constructor(
                             val identityJson = org.json.JSONObject(String(envelope.payload, Charsets.UTF_8))
                             val pk = identityJson.getString("publicKey")
                             val displayName = identityJson.getString("displayName")
+                            if (pk != senderPublicKey) {
+                                // Unauthenticated identity claim — a peer may only describe itself
+                                Timber.w("INITIAL_IDENTITY publicKey mismatch from ${senderPublicKey.take(8)}..., dropped")
+                                return
+                            }
                             profileDao.insert(Profile(pk, displayName))
                             val contact = contactDao.getByPublicKey(pk)
                             if (contact != null) {
                                 contactDao.update(com.offnetic.data.local.db.entity.Contact(
                                     publicKey = pk,
                                     displayName = displayName,
-                                    isVerified = true,
+                                    isVerified = contact.isVerified,
                                     addedAt = contact.addedAt,
                                     lastSeenAt = contact.lastSeenAt,
                                     lastPingedAt = contact.lastPingedAt
@@ -576,7 +651,7 @@ class NcapManagerImpl @Inject constructor(
                                 val newContact = com.offnetic.data.local.db.entity.Contact(
                                     publicKey = pk,
                                     displayName = displayName,
-                                    isVerified = true,
+                                    isVerified = false,
                                     addedAt = System.currentTimeMillis(),
                                     lastSeenAt = System.currentTimeMillis()
                                 )
@@ -591,13 +666,14 @@ class NcapManagerImpl @Inject constructor(
                         Timber.d("File transfer request from ${senderPublicKey.take(8)}...")
                         try {
                             val metaJson = org.json.JSONObject(String(envelope.payload, Charsets.UTF_8))
-                            val meta = FileMeta(
-                                id = metaJson.getString("transferId"),
+                            val payloadId = metaJson.getLong("payloadId")
+                            pendingFileMetas[payloadId] = FileMeta(
+                                payloadId = payloadId,
                                 fileName = metaJson.getString("fileName"),
                                 fileSize = metaJson.getLong("fileSize"),
-                                mimeType = metaJson.getString("mimeType")
+                                mimeType = metaJson.getString("mimeType"),
+                                durationLabel = metaJson.optString("duration").takeIf { it.isNotEmpty() }
                             )
-                            pendingFileMetas.getOrPut(senderPublicKey) { java.util.ArrayDeque() }.addLast(meta)
                         } catch (e: Exception) {
                             Timber.w(e, "Failed to parse file transfer meta")
                         }
@@ -804,38 +880,54 @@ class NcapManagerImpl @Inject constructor(
     }
 
     private suspend fun handleIncomingFile(endpointId: String, senderPublicKey: String, payload: Payload) {
+        if (blockedPeerDao.isBlocked(senderPublicKey)) {
+            Timber.d("Blocked peer file dropped: ${senderPublicKey.take(8)}...")
+            return
+        }
         val filePayload = payload.asFile() ?: return
-        val meta = pendingFileMetas[senderPublicKey]?.pollFirst()
+        val meta = pendingFileMetas.remove(payload.id)
         val fileName = meta?.fileName ?: "file"
         val mimeType = meta?.mimeType ?: ""
         val timestamp = System.currentTimeMillis()
 
-        var savedPath: String? = null
-        val tmpFile = filePayload.asJavaFile()
-        if (tmpFile != null && tmpFile.exists()) {
-            val ext = fileName.substringAfterLast('.', "")
-            val destDir = java.io.File(context.filesDir, "received_files")
-            destDir.mkdirs()
-            val destFile = if (ext.isNotEmpty()) {
-                java.io.File(destDir, "${timestamp}_$fileName")
-            } else {
-                java.io.File(destDir, "${timestamp}_$fileName")
+        val savedPath: String? = kotlinx.coroutines.withContext(Dispatchers.IO) {
+            try {
+                val destDir = java.io.File(context.filesDir, "received_files")
+                destDir.mkdirs()
+                val destFile = java.io.File(destDir, "${timestamp}_$fileName")
+                val tmpFile = filePayload.asJavaFile()
+                if (tmpFile != null && tmpFile.exists()) {
+                    if (!tmpFile.renameTo(destFile)) {
+                        tmpFile.copyTo(destFile, overwrite = true)
+                        tmpFile.delete()
+                    }
+                    destFile.absolutePath
+                } else {
+                    // API 29+: file payloads are backed by a content Uri, not a java File
+                    val uri = filePayload.asUri()
+                    if (uri != null) {
+                        context.contentResolver.openInputStream(uri)?.use { input ->
+                            destFile.outputStream().use { output -> input.copyTo(output) }
+                        } ?: return@withContext null
+                        destFile.absolutePath
+                    } else null
+                }
+            } catch (e: Exception) {
+                Timber.w(e, "Failed to save incoming file $fileName")
+                null
             }
-            if (tmpFile.renameTo(destFile)) {
-                savedPath = destFile.absolutePath
-            } else {
-                tmpFile.copyTo(destFile, overwrite = true)
-                savedPath = destFile.absolutePath
-            }
-            if (!tmpFile.exists() || tmpFile.delete()) { /* cleanup tmp */ }
         }
 
+        val isVoiceNote = mimeType.startsWith("audio/")
         val entity = com.offnetic.data.local.db.entity.Message(
             sessionId = senderPublicKey,
             chatId = senderPublicKey,
             senderPublicKey = senderPublicKey,
-            content = "File: $fileName",
-            type = com.offnetic.data.local.db.entity.Message.TYPE_FILE,
+            content = if (isVoiceNote) "Voice note  ${meta?.durationLabel ?: ""}".trimEnd()
+                else if (savedPath == null) "File transfer failed: $fileName"
+                else "File: $fileName",
+            type = if (isVoiceNote) com.offnetic.data.local.db.entity.Message.TYPE_VOICE_NOTE
+                else com.offnetic.data.local.db.entity.Message.TYPE_FILE,
             timestamp = timestamp,
             isSent = false,
             isRead = false,
@@ -848,7 +940,7 @@ class NcapManagerImpl @Inject constructor(
 
         val message = com.offnetic.domain.model.Message.fromEntity(entity)
         _incomingMessages.emit(message)
-        Timber.d("Incoming file saved: $fileName from ${senderPublicKey.take(8)}...")
+        Timber.d("Incoming file saved: $fileName from ${senderPublicKey.take(8)}... (path=$savedPath)")
     }
 
     private suspend fun handleEndpointFound(endpointId: String, publicKey: String) {

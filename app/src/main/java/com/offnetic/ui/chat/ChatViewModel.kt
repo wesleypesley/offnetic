@@ -1,7 +1,8 @@
 package com.offnetic.ui.chat
 
-import android.net.wifi.WifiManager
-import android.util.Base64
+import android.content.Context
+import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -14,6 +15,8 @@ import com.offnetic.data.nearby.NcapManager
 import com.offnetic.ui.navigation.Routes
 import com.offnetic.util.media.VoiceNoteRecorder
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -23,6 +26,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import timber.log.Timber
 import java.io.File
@@ -44,12 +48,8 @@ class ChatViewModel @Inject constructor(
     private val signalProtocolManager: SignalProtocolManager,
     private val ncapManager: NcapManager,
     private val voiceNoteRecorder: VoiceNoteRecorder,
-    private val wifiManager: WifiManager
+    @ApplicationContext private val context: Context
 ) : ViewModel() {
-
-    companion object {
-        private const val MAX_BT_VOICE_DURATION_MS = 30_000L
-    }
 
     val contactPublicKey: String = Routes.decodeKey(savedStateHandle.get<String>("contactPublicKey") ?: "")
 
@@ -119,28 +119,22 @@ class ChatViewModel @Inject constructor(
         sendEncrypted(plaintext, com.offnetic.data.local.db.entity.Message.TYPE_TEXT, text)
     }
 
-    fun sendFile(fileUri: String) {
+    fun sendFile(uri: Uri) {
         viewModelScope.launch {
             try {
                 val identity = identityDao.getIdentity()
                 val myPublicKey = identity?.publicKey ?: return@launch
-                val file = File(fileUri.removePrefix("file://"))
-                if (!file.exists()) return@launch
-                val maxSize = 100L * 1024 * 1024
-                if (file.length() > maxSize) return@launch
-
-                val mimeType = file.name.substringAfterLast('.', "").lowercase().let { ext ->
-                    when (ext) {
-                        "jpg", "jpeg" -> "image/jpeg"
-                        "png" -> "image/png"
-                        "gif" -> "image/gif"
-                        "webp" -> "image/webp"
-                        "mp4" -> "video/mp4"
-                        "mov" -> "video/quicktime"
-                        "pdf" -> "application/pdf"
-                        else -> "application/octet-stream"
-                    }
+                val file = withContext(Dispatchers.IO) { copyToLocalFile(uri) } ?: run {
+                    _toastMessage.emit("Could not read selected file")
+                    return@launch
                 }
+                val maxSize = 100L * 1024 * 1024
+                if (file.length() > maxSize) {
+                    _toastMessage.emit("File exceeds 100MB limit")
+                    return@launch
+                }
+
+                val mimeType = mimeTypeFor(file.name)
 
                 val entity = com.offnetic.data.local.db.entity.Message(
                     sessionId = contactPublicKey,
@@ -185,10 +179,6 @@ class ChatViewModel @Inject constructor(
                 recordingGuard = false
                 if (file != null && file.exists() && file.length() > 0) {
                     val duration = formatVoiceDuration(elapsedMs)
-                    if (!wifiManager.isWifiEnabled && elapsedMs > MAX_BT_VOICE_DURATION_MS) {
-                        _toastMessage.emit("Connect to Wi-Fi for longer voice notes (max 30s on Bluetooth)")
-                        return@launch
-                    }
                     val identity = identityDao.getIdentity()
                     val myPublicKey = identity?.publicKey ?: return@launch
 
@@ -205,27 +195,23 @@ class ChatViewModel @Inject constructor(
                     )
                     val messageId = messageDao.insert(entity)
 
-                    val audioBytes = file.readBytes()
-                    val audioJson = JSONObject().apply {
-                        put("type", "voice_note")
-                        put("duration", duration)
-                        put("content", Base64.encodeToString(audioBytes, Base64.NO_WRAP))
-                        put("timestamp", System.currentTimeMillis())
-                    }
-                    val plaintext = audioJson.toString().toByteArray(Charsets.UTF_8)
-                    val ciphertext = signalProtocolManager.encryptMessage(contactPublicKey, plaintext)
-
-                    val envelope = NcapEnvelope.Plain(
-                        senderPublicKey = myPublicKey,
-                        payloadType = NcapEnvelope.PayloadType.SIGNAL_MESSAGE,
-                        payload = ciphertext
-                    )
-
                     val connectedEndpoints = ncapManager.getConnectedEndpointIds(contactPublicKey)
                     if (connectedEndpoints.isNotEmpty()) {
-                        ncapManager.sendPayload(connectedEndpoints.first(), envelope.toBytes())
-                        messageDao.update(entity.copy(id = messageId, isSent = true))
-                        Timber.d("Voice note sent to ${contactPublicKey.take(8)}")
+                        try {
+                            ncapManager.sendFile(
+                                connectedEndpoints.first(),
+                                file.absolutePath,
+                                file.name,
+                                file.length(),
+                                "audio/mp4",
+                                duration
+                            )
+                            messageDao.update(entity.copy(id = messageId, isSent = true))
+                            Timber.d("Voice note sent to ${contactPublicKey.take(8)}")
+                        } catch (e: Exception) {
+                            Timber.e(e, "Voice note send failed")
+                            _toastMessage.emit("Voice note send failed — saved")
+                        }
                     } else {
                         Timber.w("No connected peer for voice note to ${contactPublicKey.take(8)}")
                         _toastMessage.emit("${_contactName.value} not connected — voice note saved")
@@ -348,40 +334,16 @@ class ChatViewModel @Inject constructor(
                             val path = msg.attachmentPath
                             if (path == null || !java.io.File(path).exists()) continue
                             val file = java.io.File(path)
-                            val mimeType = file.name.substringAfterLast('.', "").lowercase().let { ext ->
-                                when (ext) {
-                                    "jpg", "jpeg" -> "image/jpeg"
-                                    "png" -> "image/png"
-                                    "gif" -> "image/gif"
-                                    "webp" -> "image/webp"
-                                    "mp4" -> "video/mp4"
-                                    "mov" -> "video/quicktime"
-                                    "pdf" -> "application/pdf"
-                                    else -> "application/octet-stream"
-                                }
-                            }
-                            ncapManager.sendFile(endpointId, path, file.name, file.length(), mimeType)
+                            ncapManager.sendFile(endpointId, path, file.name, file.length(), mimeTypeFor(file.name))
                             messageDao.update(msg.copy(isSent = true))
                             Timber.d("retryUnsentMessages: resent file msg id=${msg.id}")
                         }
                         com.offnetic.data.local.db.entity.Message.TYPE_VOICE_NOTE -> {
                             val path = msg.attachmentPath
                             if (path == null || !java.io.File(path).exists()) continue
-                            val fileBytes = java.io.File(path).readBytes()
-                            val json = org.json.JSONObject().apply {
-                                put("type", "voice_note")
-                                put("duration", msg.content.removePrefix("Voice note ").trim())
-                                put("content", android.util.Base64.encodeToString(fileBytes, android.util.Base64.NO_WRAP))
-                                put("timestamp", msg.timestamp)
-                            }
-                            val plaintext = json.toString().toByteArray(Charsets.UTF_8)
-                            val ciphertext = signalProtocolManager.encryptMessage(contactPublicKey, plaintext)
-                            val envelope = NcapEnvelope.Plain(
-                                senderPublicKey = myPublicKey,
-                                payloadType = NcapEnvelope.PayloadType.SIGNAL_MESSAGE,
-                                payload = ciphertext
-                            )
-                            ncapManager.sendPayload(endpointId, envelope.toBytes())
+                            val file = java.io.File(path)
+                            val duration = msg.content.removePrefix("Voice note").trim()
+                            ncapManager.sendFile(endpointId, path, file.name, file.length(), "audio/mp4", duration)
                             messageDao.update(msg.copy(isSent = true))
                             Timber.d("retryUnsentMessages: resent voice note msg id=${msg.id}")
                         }
@@ -391,6 +353,44 @@ class ChatViewModel @Inject constructor(
             } catch (e: Exception) {
                 Timber.e(e, "retryUnsentMessages failed")
             }
+        }
+    }
+
+    /** Resolves a picked Uri to a local file, copying content Uris into cache. Call on Dispatchers.IO. */
+    private fun copyToLocalFile(uri: Uri): File? {
+        return try {
+            if (uri.scheme == "file") {
+                uri.path?.let { File(it) }?.takeIf { it.exists() }
+            } else {
+                val name = queryDisplayName(uri) ?: "file_${System.currentTimeMillis()}"
+                val dest = File(context.cacheDir, "upload_${System.currentTimeMillis()}_$name")
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    dest.outputStream().use { output -> input.copyTo(output) }
+                } ?: return null
+                dest
+            }
+        } catch (e: Exception) {
+            Timber.w(e, "copyToLocalFile failed")
+            null
+        }
+    }
+
+    private fun queryDisplayName(uri: Uri): String? {
+        return context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) cursor.getString(0) else null
+        }
+    }
+
+    private fun mimeTypeFor(fileName: String): String {
+        return when (fileName.substringAfterLast('.', "").lowercase()) {
+            "jpg", "jpeg" -> "image/jpeg"
+            "png" -> "image/png"
+            "gif" -> "image/gif"
+            "webp" -> "image/webp"
+            "mp4" -> "video/mp4"
+            "mov" -> "video/quicktime"
+            "pdf" -> "application/pdf"
+            else -> "application/octet-stream"
         }
     }
 

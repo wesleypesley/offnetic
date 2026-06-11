@@ -8,10 +8,11 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 
 data class FileMeta(
-    val id: String,
+    val payloadId: Long,
     val fileName: String,
     val fileSize: Long,
-    val mimeType: String
+    val mimeType: String,
+    val durationLabel: String? = null
 )
 
 data class CallSignal(
@@ -40,7 +41,7 @@ interface NcapManager {
     fun disconnectFromEndpoint(endpointId: String)
     fun reconnectToContact(publicKey: String)
     suspend fun sendPayload(endpointId: String, payload: ByteArray)
-    suspend fun sendFile(endpointId: String, fileUri: String, fileName: String, fileSize: Long, mimeType: String)
+    suspend fun sendFile(endpointId: String, fileUri: String, fileName: String, fileSize: Long, mimeType: String, durationLabel: String? = null)
     suspend fun sendCallSignal(endpointId: String, payloadType: NcapEnvelope.PayloadType, payload: ByteArray)
     fun getConnectedEndpointIds(publicKey: String): List<String>
 }
