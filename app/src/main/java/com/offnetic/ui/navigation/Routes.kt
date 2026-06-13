@@ -11,15 +11,12 @@ object Routes {
     const val IDENTITY_GENERATION = "identity_generation"
     const val PROFILE_SETUP = "profile_setup"
     const val MAIN = "main"
-    const val NEARBY = "nearby"
     const val QR_SCANNER = "qr_scanner"
     const val MY_QR = "my_qr"
     const val CHAT_LIST = "chat_list"
     const val CHAT = "chat/{contactPublicKey}"
     const val CONTACT_DETAIL = "contact_detail/{publicKey}"
-    const val BLOCKED_CONTACTS = "blocked_contacts"
     const val SETTINGS = "settings"
-    const val ACCOUNT = "account"
 
     fun chatRoute(contactPublicKey: String) =
         "chat/${URLEncoder.encode(contactPublicKey, "UTF-8")}"

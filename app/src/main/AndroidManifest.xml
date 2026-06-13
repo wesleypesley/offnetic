@@ -20,6 +20,7 @@
     <!-- Camera & Microphone for QR scanning, calls, voice notes -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 
     <!-- Notifications for proximity pings -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />

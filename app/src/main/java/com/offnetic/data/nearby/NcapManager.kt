@@ -44,4 +44,7 @@ interface NcapManager {
     suspend fun sendFile(endpointId: String, fileUri: String, fileName: String, fileSize: Long, mimeType: String, durationLabel: String? = null)
     suspend fun sendCallSignal(endpointId: String, payloadType: NcapEnvelope.PayloadType, payload: ByteArray)
     fun getConnectedEndpointIds(publicKey: String): List<String>
+    fun forceRestart(name: String)
+    fun setCallActive(active: Boolean)
+    suspend fun getMyPublicKey(): String
 }

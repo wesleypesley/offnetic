@@ -1,0 +1,313 @@
+- generic [active] [ref=e1]:
+  - link "Skip to main content" [ref=e2] [cursor=pointer]:
+    - /url: "#main-content"
+  - generic [ref=e3]:
+    - banner:
+      - generic [ref=e6]:
+        - text: menu
+        - generic [ref=e7]:
+          - link "Nearby" [ref=e8] [cursor=pointer]:
+            - /url: https://developers.google.com/nearby
+            - img "Nearby" [ref=e11]
+          - list "Product breadcrumb" [ref=e13]:
+            - listitem [ref=e14]:
+              - link "Nearby" [ref=e15] [cursor=pointer]:
+                - /url: https://developers.google.com/nearby
+            - listitem [ref=e16]:
+              - generic [ref=e17]: chevron_right
+              - link "Connections" [ref=e18] [cursor=pointer]:
+                - /url: https://developers.google.com/nearby/connections/overview
+        - generic [ref=e23]:
+          - combobox "Search" [ref=e24]
+          - img [ref=e26]
+          - generic [ref=e29]: /
+        - generic "Select your language preference." [ref=e30]:
+          - button "Language" [ref=e31] [cursor=pointer]:
+            - img
+            - generic [ref=e32]: Language
+            - img
+    - generic [ref=e35]:
+      - generic [ref=e36]:
+        - text: filter_list
+        - searchbox "Type to filter" [ref=e37]
+        - text: close
+      - navigation "Side menu" [ref=e38]:
+        - text: arrow_back chevron_right
+        - generic [ref=e39]:
+          - text: arrow_forward
+          - list [ref=e41]:
+            - listitem [ref=e42]:
+              - generic [ref=e44]: Nearby Connections
+              - list [ref=e45]:
+                - listitem [ref=e46]:
+                  - link "Overview" [ref=e47] [cursor=pointer]:
+                    - /url: /nearby/connections/overview
+                    - generic [ref=e48]: Overview
+                - listitem [ref=e49]:
+                  - link "Choose a Strategy" [ref=e50] [cursor=pointer]:
+                    - /url: /nearby/connections/strategies
+                    - generic [ref=e51]: Choose a Strategy
+                - listitem [ref=e52]:
+                  - generic [ref=e54]: Android
+                  - list [ref=e55]:
+                    - listitem [ref=e56]:
+                      - link "Get Started" [ref=e57] [cursor=pointer]:
+                        - /url: /nearby/connections/android/get-started
+                        - generic [ref=e58]: Get Started
+                    - listitem [ref=e59]:
+                      - link "Advertise and Discover" [ref=e60] [cursor=pointer]:
+                        - /url: /nearby/connections/android/discover-devices
+                        - generic [ref=e61]: Advertise and Discover
+                    - listitem [ref=e62]:
+                      - link "Manage Connections" [ref=e63] [cursor=pointer]:
+                        - /url: /nearby/connections/android/manage-connections
+                        - generic [ref=e64]: Manage Connections
+                    - listitem [ref=e65]:
+                      - link "Exchange Data" [ref=e66] [cursor=pointer]:
+                        - /url: /nearby/connections/android/exchange-data
+                        - generic [ref=e67]: Exchange Data
+                    - listitem [ref=e68]:
+                      - link "API Reference" [ref=e69] [cursor=pointer]:
+                        - /url: /android/reference/com/google/android/gms/nearby/connection/package-summary
+                        - generic [ref=e70]: API Reference
+                        - generic [ref=e71]: open_in_new
+                    - listitem [ref=e72]:
+                      - link "Sample" [ref=e73] [cursor=pointer]:
+                        - /url: https://github.com/android/connectivity-samples/tree/main/NearbyConnectionsWalkieTalkie
+                        - generic [ref=e74]: Sample
+                        - generic [ref=e75]: open_in_new
+                - listitem [ref=e76]:
+                  - generic [ref=e78]: Swift
+                  - list [ref=e79]:
+                    - listitem [ref=e80]:
+                      - link "Get Started" [ref=e81] [cursor=pointer]:
+                        - /url: /nearby/connections/swift/get-started
+                        - generic [ref=e82]: Get Started
+                    - listitem [ref=e83]:
+                      - link "Advertise and Discover" [ref=e84] [cursor=pointer]:
+                        - /url: /nearby/connections/swift/discover-devices
+                        - generic [ref=e85]: Advertise and Discover
+                    - listitem [ref=e86]:
+                      - link "Manage Connections" [ref=e87] [cursor=pointer]:
+                        - /url: /nearby/connections/swift/manage-connections
+                        - generic [ref=e88]: Manage Connections
+                    - listitem [ref=e89]:
+                      - link "Exchange Data" [ref=e90] [cursor=pointer]:
+                        - /url: /nearby/connections/swift/exchange-data
+                        - generic [ref=e91]: Exchange Data
+                    - listitem [ref=e92]:
+                      - link "Sample" [ref=e93] [cursor=pointer]:
+                        - /url: https://github.com/google/nearby/tree/main/connections/swift/NearbyConnections/Example
+                        - generic [ref=e94]: Sample
+                        - generic [ref=e95]: open_in_new
+    - button "Hide side navigation" [expanded] [ref=e96] [cursor=pointer]:
+      - generic [ref=e97]: chevron_left
+    - generic [ref=e98]:
+      - main [ref=e99]:
+        - generic [ref=e100]:
+          - article [ref=e101]:
+            - generic [ref=e104]:
+              - text: Join
+              - link "our mailing list" [ref=e105] [cursor=pointer]:
+                - /url: https://groups.google.com/forum/#!forum/google-nearby-announce/join
+              - text: for updates and announcements about Nearby.
+            - navigation [ref=e106]:
+              - list "Breadcrumb" [ref=e107]:
+                - listitem [ref=e108]:
+                  - link "Home" [ref=e109] [cursor=pointer]:
+                    - /url: https://developers.google.com/
+                - listitem [ref=e110]:
+                  - generic [ref=e111]: chevron_right
+                  - link "Products" [ref=e112] [cursor=pointer]:
+                    - /url: https://developers.google.com/products
+                - listitem [ref=e113]:
+                  - generic [ref=e114]: chevron_right
+                  - link "Nearby" [ref=e115] [cursor=pointer]:
+                    - /url: https://developers.google.com/nearby
+                - listitem [ref=e116]:
+                  - generic [ref=e117]: chevron_right
+                  - link "Connections" [ref=e118] [cursor=pointer]:
+                    - /url: https://developers.google.com/nearby/connections/overview
+            - heading "Strategies LLM Tools" [level=1] [ref=e119]:
+              - text: Strategies
+              - generic [ref=e120]:
+                - listbox "Bookmark collections drop down" [ref=e123] [cursor=pointer]:
+                  - button "Open dropdown" [ref=e124]:
+                    - generic:
+                      - generic [ref=e125]: bookmark_border
+                      - text: bookmark
+                    - text: arrow_drop_down
+                - group "LLM Tools" [ref=e127]:
+                  - button "Copy page as markdown" [ref=e129] [cursor=pointer]:
+                    - generic [ref=e130]: content_copy
+                  - button "More LLM Tools options" [ref=e133] [cursor=pointer]: arrow_drop_down
+            - list [ref=e135]:
+              - listitem [ref=e136]:
+                - heading "On this page" [level=2] [ref=e137]:
+                  - generic [ref=e138]: On this page
+                - text: expand_more
+              - listitem [ref=e139]:
+                - link "Cluster" [ref=e140] [cursor=pointer]:
+                  - /url: "#cluster"
+                  - generic [ref=e141]: Cluster
+              - listitem [ref=e142]:
+                - link "Star" [ref=e143] [cursor=pointer]:
+                  - /url: "#star"
+                  - generic [ref=e144]: Star
+              - listitem [ref=e145]:
+                - link "Point-to-Point" [ref=e146] [cursor=pointer]:
+                  - /url: "#point-to-point"
+                  - generic [ref=e147]: Point-to-Point
+              - listitem: more_horiz
+            - generic [ref=e148]:
+              - region "Page Summary" [ref=e149]:
+                - button "Page Summary" [ref=e150] [cursor=pointer]:
+                  - img "Spark icon" [ref=e151]
+                  - heading "Page Summary" [level=2] [ref=e153]
+                  - generic: expand_more
+              - paragraph [ref=e154]: Nearby Connections supports different strategies for advertising and discovery. The best strategy to use depends on the use case.
+              - 'heading "Cluster Copy link to this section: Cluster" [level=2] [ref=e155]':
+                - heading "Cluster" [level=2] [ref=e156]
+                - 'button "Copy link to this section: Cluster" [ref=e157] [cursor=pointer]': link
+              - paragraph [ref=e158]: The cluster strategy is a peer-to-peer strategy that supports an M-to-N, or cluster-shaped, connection topology. In other words, this enables connecting amorphous clusters of devices within radio range (~100m), where each device can both initiate outgoing connections to M other devices and accept incoming connections from N other devices.
+              - paragraph [ref=e159]: This strategy is more flexible in its topology constraints than the star strategy, but results in lower bandwidth connections. It is good for use cases with smaller payloads that require a more mesh-like experience, such as multiplayer gaming.
+              - 'heading "Star Copy link to this section: Star" [level=2] [ref=e160]':
+                - heading "Star" [level=2] [ref=e161]
+                - 'button "Copy link to this section: Star" [ref=e162] [cursor=pointer]': link
+              - paragraph [ref=e163]: The star strategy is a peer-to-peer strategy that supports a 1-to-N, or star-shaped, connection topology. In other words, this enables connecting devices within radio range (~100m) in a star shape, where each device can, at any given time, play the role of either a hub (where it can accept incoming connections from N other devices), or a spoke (where it can initiate an outgoing connection to a single hub), but not both.
+              - paragraph [ref=e164]: This strategy lends itself best to situations where there is one device advertising, and N devices which discover the advertiser, though you may still advertise and discover simultaneously if required.
+              - paragraph [ref=e165]: This strategy is more strict in its topology constraints than the cluster strategy, but results in higher bandwidth connections. It is good for high-bandwidth use cases such as sharing a video to a group of friends.
+              - heading "Point-to-Point" [level=2] [ref=e166]
+              - paragraph [ref=e167]: The point-to-point strategy is a peer-to-peer strategy that supports a 1-to-1 connection topology. In other words, this enables connecting devices within radio range (~100m) with the highest possible throughput, but does not allow for more than a single connection at a time.
+              - paragraph [ref=e168]: This strategy lends itself best to situations where transferring data is more important than the flexibility of maintaining multiple connections.
+              - paragraph [ref=e169]: This strategy is more strict in its topology constraints than the star strategy, but results in higher bandwidth connections. It is good for high-bandwidth use cases such as sharing a large video to another device.
+          - generic [ref=e202]:
+            - paragraph [ref=e203]:
+              - text: Except as otherwise noted, the content of this page is licensed under the
+              - link "Creative Commons Attribution 4.0 License" [ref=e204] [cursor=pointer]:
+                - /url: https://creativecommons.org/licenses/by/4.0/
+              - text: ", and code samples are licensed under the"
+              - link "Apache 2.0 License" [ref=e205] [cursor=pointer]:
+                - /url: https://www.apache.org/licenses/LICENSE-2.0
+              - text: . For details, see the
+              - link "Google Developers Site Policies" [ref=e206] [cursor=pointer]:
+                - /url: https://developers.google.com/site-policies
+              - text: . Java is a registered trademark of Oracle and/or its affiliates.
+            - paragraph [ref=e207]: Last updated 2025-08-12 UTC.
+      - navigation "Footer links" [ref=e210]:
+        - list [ref=e211]:
+          - listitem [ref=e212]:
+            - heading "Connect" [level=3] [ref=e213]
+            - list [ref=e214]:
+              - listitem [ref=e215]:
+                - link "Blog" [ref=e216] [cursor=pointer]:
+                  - /url: //googledevelopers.blogspot.com
+              - listitem [ref=e217]:
+                - link "Bluesky" [ref=e218] [cursor=pointer]:
+                  - /url: https://goo.gle/3FReQXN
+              - listitem [ref=e219]:
+                - link "Instagram" [ref=e220] [cursor=pointer]:
+                  - /url: https://www.instagram.com/googlefordevs/
+              - listitem [ref=e221]:
+                - link "LinkedIn" [ref=e222] [cursor=pointer]:
+                  - /url: https://www.linkedin.com/showcase/googledevelopers/
+              - listitem [ref=e223]:
+                - link "X (Twitter)" [ref=e224] [cursor=pointer]:
+                  - /url: //twitter.com/googledevs
+              - listitem [ref=e225]:
+                - link "YouTube" [ref=e226] [cursor=pointer]:
+                  - /url: //www.youtube.com/user/GoogleDevelopers
+          - listitem [ref=e227]:
+            - heading "Programs" [level=3] [ref=e228]
+            - list [ref=e229]:
+              - listitem [ref=e230]:
+                - link "Google Developer Program" [ref=e231] [cursor=pointer]:
+                  - /url: /program
+              - listitem [ref=e232]:
+                - link "Google Developer Groups" [ref=e233] [cursor=pointer]:
+                  - /url: /community
+              - listitem [ref=e234]:
+                - link "Google Developer Experts" [ref=e235] [cursor=pointer]:
+                  - /url: /community/experts
+              - listitem [ref=e236]:
+                - link "Accelerators" [ref=e237] [cursor=pointer]:
+                  - /url: /community/accelerators
+              - listitem [ref=e238]:
+                - link "Google Cloud & NVIDIA" [ref=e239] [cursor=pointer]:
+                  - /url: /community/nvidia
+          - listitem [ref=e240]:
+            - heading "Developer consoles" [level=3] [ref=e241]
+            - list [ref=e242]:
+              - listitem [ref=e243]:
+                - link "Google API Console" [ref=e244] [cursor=pointer]:
+                  - /url: //console.developers.google.com
+              - listitem [ref=e245]:
+                - link "Google Cloud Platform Console" [ref=e246] [cursor=pointer]:
+                  - /url: //console.cloud.google.com
+              - listitem [ref=e247]:
+                - link "Google Play Console" [ref=e248] [cursor=pointer]:
+                  - /url: //play.google.com/apps/publish
+              - listitem [ref=e249]:
+                - link "Firebase Console" [ref=e250] [cursor=pointer]:
+                  - /url: //console.firebase.google.com
+              - listitem [ref=e251]:
+                - link "Actions on Google Console" [ref=e252] [cursor=pointer]:
+                  - /url: //console.actions.google.com
+              - listitem [ref=e253]:
+                - link "Cast SDK Developer Console" [ref=e254] [cursor=pointer]:
+                  - /url: //cast.google.com/publish
+              - listitem [ref=e255]:
+                - link "Chrome Web Store Dashboard" [ref=e256] [cursor=pointer]:
+                  - /url: //chrome.google.com/webstore/developer/dashboard
+              - listitem [ref=e257]:
+                - link "Google Home Developer Console" [ref=e258] [cursor=pointer]:
+                  - /url: //console.home.google.com
+      - generic [ref=e260]:
+        - navigation "Other Google Developers websites" [ref=e261]:
+          - link "Google Developers" [ref=e262] [cursor=pointer]:
+            - /url: https://developers.google.com/
+            - img "Google Developers" [ref=e264]
+          - list [ref=e265]:
+            - listitem [ref=e266]:
+              - link "Android" [ref=e267] [cursor=pointer]:
+                - /url: //developer.android.com
+            - listitem [ref=e268]:
+              - link "Chrome" [ref=e269] [cursor=pointer]:
+                - /url: //developer.chrome.com/home
+            - listitem [ref=e270]:
+              - link "Firebase" [ref=e271] [cursor=pointer]:
+                - /url: //firebase.google.com
+            - listitem [ref=e272]:
+              - link "Google Cloud Platform" [ref=e273] [cursor=pointer]:
+                - /url: //cloud.google.com
+            - listitem [ref=e274]:
+              - link "Google AI" [ref=e275] [cursor=pointer]:
+                - /url: //ai.google.dev/
+            - listitem [ref=e276]:
+              - link "All products" [ref=e277] [cursor=pointer]:
+                - /url: /products
+        - navigation "Utility links" [ref=e278]:
+          - list [ref=e279]:
+            - listitem [ref=e280]:
+              - link "Terms" [ref=e281] [cursor=pointer]:
+                - /url: /terms/site-terms
+            - listitem [ref=e282]:
+              - text: "|"
+              - link "Privacy" [ref=e283] [cursor=pointer]:
+                - /url: //policies.google.com/privacy
+            - text: "|"
+          - generic "Select your language preference." [ref=e284]:
+            - button "Language" [ref=e285] [cursor=pointer]:
+              - img
+              - generic [ref=e286]: Language
+              - img
+      - toolbar "Side panel menu" [ref=e289]:
+        - button "Info" [ref=e290] [cursor=pointer]:
+          - img [ref=e292]
+          - generic [ref=e295]: Info
+        - button "Chat" [ref=e296] [cursor=pointer]:
+          - img [ref=e298]
+          - generic [ref=e301]: Chat
+        - button "API" [ref=e302] [cursor=pointer]:
+          - img [ref=e304]
+          - generic [ref=e306]: API

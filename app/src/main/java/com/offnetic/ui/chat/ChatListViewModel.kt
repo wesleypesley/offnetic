@@ -5,9 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.offnetic.data.local.db.dao.ContactDao
 import com.offnetic.data.local.db.dao.IdentityDao
 import com.offnetic.data.local.db.dao.MessageDao
-import com.offnetic.data.local.db.dao.UnreadCountRow
 import com.offnetic.data.local.db.dao.ProfileDao
-import com.offnetic.data.local.datastore.PreferencesRepository
 import com.offnetic.data.nearby.NcapManager
 import com.offnetic.domain.model.ConnectionState
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -36,7 +34,6 @@ class ChatListViewModel @Inject constructor(
     private val identityDao: IdentityDao,
     private val contactDao: ContactDao,
     private val profileDao: ProfileDao,
-    private val prefs: PreferencesRepository,
     private val ncapManager: NcapManager
 ) : ViewModel() {
 
@@ -68,9 +65,6 @@ class ChatListViewModel @Inject constructor(
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    private val _isScoutMode = MutableStateFlow(true)
-    val isScoutMode: StateFlow<Boolean> = _isScoutMode.asStateFlow()
-
     init {
         viewModelScope.launch {
             identityDao.getIdentity()?.let { id ->
@@ -79,21 +73,6 @@ class ChatListViewModel @Inject constructor(
                     _profileDisplayName.value = profile.displayName
                 }
             }
-            prefs.isBackgroundScanningEnabled.collect { enabled ->
-                _isScoutMode.value = enabled
-            }
-        }
-    }
-
-    fun enableScoutMode() {
-        viewModelScope.launch {
-            prefs.setBackgroundScanningEnabled(true)
-        }
-    }
-
-    fun disableScoutMode() {
-        viewModelScope.launch {
-            prefs.setBackgroundScanningEnabled(false)
         }
     }
 }

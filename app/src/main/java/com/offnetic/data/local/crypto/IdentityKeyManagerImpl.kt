@@ -65,7 +65,7 @@ class IdentityKeyManagerImpl @Inject constructor(
         val encryptedPrivate = encryptWithKeystore(wrappingKey, serializedPrivate)
         val ivBase64 = Base64.encodeToString(encryptedPrivate.first, Base64.NO_WRAP)
         val ciphertextBase64 = Base64.encodeToString(encryptedPrivate.second, Base64.NO_WRAP)
-        val publicKeyBase64 = Base64.encodeToString(serializedPublic, Base64.NO_WRAP)
+        val publicKeyBase64 = Base64.encodeToString(serializedPublic, Base64.NO_WRAP or Base64.URL_SAFE)
 
         val registrationId = ((System.currentTimeMillis() / 1000).toInt() % 16380 + 1)
 
@@ -92,7 +92,7 @@ class IdentityKeyManagerImpl @Inject constructor(
         val ciphertext = Base64.decode(identity.encryptedPrivateKey, Base64.NO_WRAP)
 
         val serializedPrivate = decryptWithKeystore(wrappingKey, iv, ciphertext)
-        val serializedPublic = Base64.decode(identity.publicKey, Base64.NO_WRAP)
+        val serializedPublic = Base64.decode(identity.publicKey, Base64.NO_WRAP or Base64.URL_SAFE)
 
         val libsignalPublicKey = ECPublicKey(serializedPublic)
         val libsignalPrivateKey = ECPrivateKey(serializedPrivate)

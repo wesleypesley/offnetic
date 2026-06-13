@@ -4,7 +4,6 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
-import com.offnetic.data.local.db.dao.BlockedPeerDao
 import com.offnetic.data.local.db.dao.CallHistoryDao
 import com.offnetic.data.local.db.dao.ContactDao
 import com.offnetic.data.local.db.dao.IdentityDao
@@ -17,7 +16,6 @@ import com.offnetic.data.local.db.dao.SignalPreKeyDao
 import com.offnetic.data.local.db.dao.SignalSenderKeyDao
 import com.offnetic.data.local.db.dao.SignalSessionDao
 import com.offnetic.data.local.db.dao.SignalSignedPreKeyDao
-import com.offnetic.data.local.db.entity.BlockedPeer
 import com.offnetic.data.local.db.entity.CallHistoryEntity
 import com.offnetic.data.local.db.entity.Contact
 import com.offnetic.data.local.db.entity.Identity
@@ -36,7 +34,6 @@ import com.offnetic.data.local.db.entity.SignalSignedPreKeyEntity
         Contact::class,
         Message::class,
         Session::class,
-        BlockedPeer::class,
         PreKeyBundleEntity::class,
         Identity::class,
         Profile::class,
@@ -47,7 +44,7 @@ import com.offnetic.data.local.db.entity.SignalSignedPreKeyEntity
         SignalSenderKeyEntity::class,
         SignalIdentityEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class OffneticDatabase : RoomDatabase() {
@@ -55,7 +52,6 @@ abstract class OffneticDatabase : RoomDatabase() {
     abstract fun contactDao(): ContactDao
     abstract fun messageDao(): MessageDao
     abstract fun sessionDao(): SessionDao
-    abstract fun blockedPeerDao(): BlockedPeerDao
     abstract fun preKeyDao(): PreKeyDao
     abstract fun identityDao(): IdentityDao
     abstract fun profileDao(): ProfileDao

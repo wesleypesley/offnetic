@@ -1,6 +1,7 @@
 package com.offnetic.data.nearby
 
 import android.content.Context
+import android.os.Build
 import com.google.android.gms.nearby.connection.AdvertisingOptions
 import com.google.android.gms.nearby.connection.ConnectionInfo
 import com.google.android.gms.nearby.connection.ConnectionLifecycleCallback
@@ -15,7 +16,6 @@ import com.google.android.gms.nearby.connection.PayloadTransferUpdate
 import com.google.android.gms.nearby.connection.Strategy
 import com.offnetic.data.crypto.NcapEnvelope
 import com.offnetic.data.crypto.SignalProtocolManager
-import com.offnetic.data.local.db.dao.BlockedPeerDao
 import com.offnetic.data.local.db.dao.ContactDao
 import com.offnetic.data.local.db.dao.IdentityDao
 import com.offnetic.data.local.db.dao.MessageDao
@@ -51,13 +51,13 @@ import javax.inject.Singleton
 class NcapManagerImpl @Inject constructor(
     private val connectionsClient: ConnectionsClient,
     private val identityDao: IdentityDao,
-    private val blockedPeerDao: BlockedPeerDao,
     private val contactDao: ContactDao,
     private val profileDao: ProfileDao,
     private val prefs: PreferencesRepository,
     private val proximityPingNotifier: ProximityPingNotifier,
     private val signalProtocolManager: SignalProtocolManager,
     private val messageDao: MessageDao,
+    private val wifiP2pHandler: WifiP2pHandler,
     @ApplicationContext private val context: Context
 ) : NcapManager {
 
@@ -91,6 +91,43 @@ class NcapManagerImpl @Inject constructor(
     private var isAdvertising = false
     private var isDiscovering = false
     private var currentAdvertisingName: String = ""
+    @Volatile private var callActiveCount = 0
+    private val deferredFilePayloads = ConcurrentHashMap<Long, Pair<String, Payload>>()
+
+    override suspend fun getMyPublicKey(): String {
+        return identityDao.getIdentity()?.publicKey ?: ""
+    }
+
+    override fun setCallActive(active: Boolean) {
+        val prevActive = callActiveCount > 0
+        if (active) {
+            callActiveCount++
+        } else {
+            callActiveCount = (callActiveCount - 1).coerceAtLeast(0)
+        }
+        val nowActive = callActiveCount > 0
+        Timber.d("Call active count: $callActiveCount (was $prevActive, now $nowActive)")
+
+        if (prevActive && !nowActive) {
+            processDeferredFiles()
+        }
+    }
+
+    private fun processDeferredFiles() {
+        val entries = deferredFilePayloads.toMap()
+        for ((payloadId, pair) in entries) {
+            val (endpointId, payload) = pair
+            scope.launch {
+                kotlinx.coroutines.delay(500L)
+                try {
+                    val publicKey = endpointPeers[endpointId]?.publicKey ?: return@launch
+                    handleIncomingFileInternal(endpointId, publicKey, payload)
+                } finally {
+                    deferredFilePayloads.remove(payloadId)
+                }
+            }
+        }
+    }
 
     private val endpointPayloadCallbacks = ConcurrentHashMap<String, PayloadCallback>()
     private val endpointPublicKeys = ConcurrentHashMap<String, String>()
@@ -98,6 +135,7 @@ class NcapManagerImpl @Inject constructor(
     private val shatteredSessionBundles = ConcurrentHashMap<String, ByteArray>()
     private val preKeyBundleRetries = ConcurrentHashMap<String, ByteArray>()
     private val identityRetries = ConcurrentHashMap<String, ByteArray>()
+    private val identitySentPeers = ConcurrentHashMap<String, Boolean>()
     private val heartbeatJobs = ConcurrentHashMap<String, kotlinx.coroutines.Job>()
     private val pendingFileMetas = ConcurrentHashMap<Long, FileMeta>()
     private val incomingFilePayloads = ConcurrentHashMap<Long, Payload>()
@@ -111,12 +149,6 @@ class NcapManagerImpl @Inject constructor(
             updatePeerState(endpointId, ConnectionState.CONNECTING)
 
             scope.launch {
-                val blocked = blockedPeerDao.isBlocked(publicKey)
-                if (blocked) {
-                    rejectConnection(endpointId)
-                    return@launch
-                }
-
                 if (!endpointPeers.containsKey(endpointId)) {
                     val contact = contactDao.getByPublicKey(publicKey)
                     val displayName = contact?.displayName ?: publicKey.take(12)
@@ -125,7 +157,6 @@ class NcapManagerImpl @Inject constructor(
                         publicKey = publicKey,
                         displayName = displayName,
                         isContact = contact != null,
-                        isBlocked = false,
                         connectionState = ConnectionState.CONNECTING,
                         lastSeenAt = System.currentTimeMillis(),
                         lastPingedAt = 0L
@@ -207,19 +238,23 @@ class NcapManagerImpl @Inject constructor(
                     }
 
                     try {
-                        val profile = profileDao.getByPublicKey(myIdentity.publicKey)
-                        val displayName = profile?.displayName ?: myIdentity.publicKey.take(12)
-                        val identityJson = org.json.JSONObject().apply {
-                            put("publicKey", myIdentity.publicKey)
-                            put("displayName", displayName)
+                        if (identitySentPeers.putIfAbsent(publicKey, true) != null) {
+                            Timber.d("INITIAL_IDENTITY already sent to ${publicKey.take(8)}..., skipping")
+                        } else {
+                            val profile = profileDao.getByPublicKey(myIdentity.publicKey)
+                            val displayName = profile?.displayName ?: myIdentity.publicKey.take(12)
+                            val identityJson = org.json.JSONObject().apply {
+                                put("publicKey", myIdentity.publicKey)
+                                put("displayName", displayName)
+                            }
+                            val idEnvelope = NcapEnvelope.Plain(
+                                senderPublicKey = myIdentity.publicKey,
+                                payloadType = NcapEnvelope.PayloadType.INITIAL_IDENTITY,
+                                payload = identityJson.toString().toByteArray(Charsets.UTF_8)
+                            )
+                            sendPayload(endpointId, idEnvelope.toBytes())
+                            Timber.d("INITIAL_IDENTITY sent to ${publicKey.take(8)}...")
                         }
-                        val idEnvelope = NcapEnvelope.Plain(
-                            senderPublicKey = myIdentity.publicKey,
-                            payloadType = NcapEnvelope.PayloadType.INITIAL_IDENTITY,
-                            payload = identityJson.toString().toByteArray(Charsets.UTF_8)
-                        )
-                        sendPayload(endpointId, idEnvelope.toBytes())
-                        Timber.d("INITIAL_IDENTITY sent to ${publicKey.take(8)}...")
                     } catch (e: Exception) {
                         Timber.w(e, "Failed to send INITIAL_IDENTITY to ${publicKey.take(8)}..., buffering for retry")
                         val profile = profileDao.getByPublicKey(myIdentity.publicKey)
@@ -298,6 +333,7 @@ class NcapManagerImpl @Inject constructor(
             _nearbyState.value = if (isDiscovering) NearbyState.Active else NearbyState.Advertising
             Timber.d("Advertising started as: ${name.take(16)}...")
         }.addOnFailureListener { e ->
+            isAdvertising = false
             Timber.e(e, "Advertising failed (status: ${(e as? com.google.android.gms.common.api.ApiException)?.statusCode ?: "unknown"})")
             _nearbyState.value = NearbyState.Error("Advertising failed: ${e.message}")
         }
@@ -305,6 +341,20 @@ class NcapManagerImpl @Inject constructor(
 
     override fun startDiscovery() {
         if (isDiscovering) return
+        try {
+            val lm = context.getSystemService(android.content.Context.LOCATION_SERVICE) as android.location.LocationManager
+            val locationEnabled = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                lm.isLocationEnabled
+            } else {
+                @Suppress("DEPRECATION")
+                android.provider.Settings.Secure.getInt(context.contentResolver, android.provider.Settings.Secure.LOCATION_MODE) != android.provider.Settings.Secure.LOCATION_MODE_OFF
+            }
+            if (!locationEnabled) {
+                android.util.Log.e("NcapConn", "startDiscovery: Location is OFF — NCAPI discovery will fail. Enable Location in Settings.")
+                _nearbyState.value = NearbyState.Error("Location must be enabled for peer discovery")
+                return
+            }
+        } catch (_: Exception) {}
 
         val options = DiscoveryOptions.Builder()
             .setStrategy(Strategy.P2P_CLUSTER)
@@ -314,9 +364,10 @@ class NcapManagerImpl @Inject constructor(
                 .addOnSuccessListener {
                 isDiscovering = true
                 _nearbyState.value = if (isAdvertising) NearbyState.Active else NearbyState.Discovering
-                Timber.d("Discovery started")
+                android.util.Log.e("NcapConn", "startDiscovery: SUCCESS")
             }.addOnFailureListener { e ->
-                Timber.e(e, "Discovery failed (status: ${(e as? com.google.android.gms.common.api.ApiException)?.statusCode ?: "unknown"})")
+                isDiscovering = false
+                android.util.Log.e("NcapConn", "startDiscovery: FAILED — ${e.message}")
                 _nearbyState.value = NearbyState.Error("Discovery failed: ${e.message}")
             }
     }
@@ -344,13 +395,28 @@ class NcapManagerImpl @Inject constructor(
     }
 
     override fun stopAll() {
-        connectionsClient.stopAllEndpoints()
+        try { connectionsClient.stopAllEndpoints() } catch (_: Exception) {}
         stopAdvertising()
         stopDiscovery()
         endpointPayloadCallbacks.clear()
         endpointPublicKeys.clear()
         decryptFailureCounts.clear()
+        deferredFilePayloads.clear()
         _nearbyState.value = NearbyState.Idle
+    }
+
+    override fun forceRestart(name: String) {
+        if (isAdvertising) {
+            try { connectionsClient.stopAdvertising() } catch (_: Exception) {}
+            isAdvertising = false
+        }
+        if (isDiscovering) {
+            try { connectionsClient.stopDiscovery() } catch (_: Exception) {}
+            isDiscovering = false
+        }
+        _nearbyState.value = NearbyState.Idle
+        startAdvertising(name)
+        startDiscovery()
     }
 
     override fun requestConnection(endpointId: String) {
@@ -410,20 +476,75 @@ class NcapManagerImpl @Inject constructor(
         updatePeerState(endpointId, ConnectionState.DISCONNECTED)
     }
 
+    private val reconnecting = ConcurrentHashMap<String, Boolean>()
+
     override fun reconnectToContact(publicKey: String) {
-        val endpointId = endpointPeers.entries
-            .find { it.value.publicKey == publicKey }?.key ?: run {
-                Timber.d("reconnectToContact: peer $publicKey not in endpoint list, ensuring discovery is active")
-                startDiscovery()
-                return
-            }
-        val state = endpointPeers[endpointId]?.connectionState
-        if (state == ConnectionState.CONNECTED || state == ConnectionState.CONNECTING) {
-            Timber.d("reconnectToContact: already $state")
+        if (reconnecting.putIfAbsent(publicKey, true) != null) {
+            android.util.Log.e("NcapConn", "reconnectToContact: already reconnecting to ${publicKey.take(12)}..., skipping")
             return
         }
-        Timber.d("reconnectToContact: requesting connection to ${publicKey.take(8)}...")
-        requestConnection(endpointId)
+        scope.launch {
+            try {
+                val endpointId = findOrAwaitEndpoint(publicKey)
+                if (endpointId == null) {
+                    Timber.d("reconnectToContact: peer $publicKey not found after retries")
+                    return@launch
+                }
+                val state = endpointPeers[endpointId]?.connectionState
+                if (state == ConnectionState.CONNECTED || state == ConnectionState.CONNECTING) {
+                    Timber.d("reconnectToContact: already $state")
+                    return@launch
+                }
+                Timber.d("reconnectToContact: requesting connection to ${publicKey.take(8)}...")
+                requestConnection(endpointId)
+            } finally {
+                reconnecting.remove(publicKey)
+            }
+        }
+    }
+
+    private suspend fun findOrAwaitEndpoint(publicKey: String): String? {
+        android.util.Log.e("NcapConn", "findOrAwait: search len=${publicKey.length} key=${publicKey.take(12)}...")
+        val existing = endpointPeers.entries.map { "${it.key.take(6)}→len${it.value.publicKey.length} ${it.value.publicKey.take(12)}..." }
+        android.util.Log.e("NcapConn", "findOrAwait: peers(${endpointPeers.size}): $existing")
+        val found = endpointPeers.entries.find { it.value.publicKey == publicKey }?.key
+        if (found != null) {
+            android.util.Log.e("NcapConn", "findOrAwait: found → $found")
+            return found
+        }
+        val isEmpty = endpointPeers.isEmpty()
+        android.util.Log.e("NcapConn", "findOrAwait: NOT found — isEmpty=$isEmpty nearby=${_nearbyState.value} adv=$isAdvertising disc=$isDiscovering")
+        if (isEmpty) {
+            val name = identityDao.getIdentity()?.publicKey ?: return null
+            if (isAdvertising) { try { connectionsClient.stopAdvertising() } catch (_: Exception) {}; isAdvertising = false }
+            if (isDiscovering) { try { connectionsClient.stopDiscovery() } catch (_: Exception) {}; isDiscovering = false }
+            _nearbyState.value = NearbyState.Idle
+            kotlinx.coroutines.delay(1000L)
+            startAdvertising(name)
+            startDiscovery()
+            android.util.Log.e("NcapConn", "findOrAwait: restarted — advertising=$isAdvertising discovering=$isDiscovering")
+        }
+        for (attempt in 1..30) {
+            kotlinx.coroutines.delay(2000L)
+            val found2 = endpointPeers.entries.find { it.value.publicKey == publicKey }?.key
+            if (found2 != null) {
+                android.util.Log.e("NcapConn", "findOrAwait: found on attempt $attempt → $found2")
+                return found2
+            }
+            if (attempt % 5 == 0 && endpointPeers.isEmpty()) {
+                android.util.Log.e("NcapConn", "findOrAwait: attempt $attempt — still empty, re-restarting")
+                val name = identityDao.getIdentity()?.publicKey ?: return null
+                if (isAdvertising) { try { connectionsClient.stopAdvertising() } catch (_: Exception) {}; isAdvertising = false }
+                if (isDiscovering) { try { connectionsClient.stopDiscovery() } catch (_: Exception) {}; isDiscovering = false }
+                _nearbyState.value = NearbyState.Idle
+                kotlinx.coroutines.delay(1000L)
+                startAdvertising(name)
+                startDiscovery()
+            }
+            val snapshot = endpointPeers.entries.map { "${it.key.take(6)}→len${it.value.publicKey.length} ${it.value.publicKey.take(12)}..." }
+            android.util.Log.e("NcapConn", "findOrAwait: attempt $attempt — peers(${endpointPeers.size}): $snapshot")
+        }
+        return null
     }
 
     override suspend fun sendPayload(endpointId: String, payload: ByteArray) {
@@ -452,6 +573,10 @@ class NcapManagerImpl @Inject constructor(
         mimeType: String,
         durationLabel: String?
     ) {
+        if (callActiveCount > 0) {
+            Timber.d("sendFile: call active (count=$callActiveCount), rejecting file send")
+            throw IllegalStateException("Cannot send files during an active call")
+        }
         val MAX_FILE_SIZE = 100L * 1024 * 1024
         if (fileSize > MAX_FILE_SIZE) {
             throw IllegalArgumentException("File exceeds 100MB limit")
@@ -518,8 +643,7 @@ class NcapManagerImpl @Inject constructor(
         return object : PayloadCallback() {
             override fun onPayloadReceived(endpointId: String, payload: Payload) {
                 if (payload.type == Payload.Type.FILE) {
-                    // FILE payloads arrive when the transfer STARTS; the file is only
-                    // complete on PayloadTransferUpdate SUCCESS — stash until then.
+                    android.util.Log.e("NcapFile", "onPayloadReceived FILE payloadId=${payload.id} — stashing")
                     incomingFilePayloads[payload.id] = payload
                     return
                 }
@@ -529,12 +653,21 @@ class NcapManagerImpl @Inject constructor(
             }
 
             override fun onPayloadTransferUpdate(endpointId: String, update: PayloadTransferUpdate) {
+                android.util.Log.e("NcapFile", "onPayloadTransferUpdate status=${update.status} payloadId=${update.payloadId}")
                 when (update.status) {
                     PayloadTransferUpdate.Status.SUCCESS -> {
                         outgoingFileTransfers.remove(update.payloadId)?.complete(Unit)
-                        incomingFilePayloads.remove(update.payloadId)?.let { payload ->
-                            scope.launch {
-                                handleIncomingFile(endpointId, publicKey, payload)
+                        val stashedPayload = incomingFilePayloads[update.payloadId]
+                        if (stashedPayload != null) {
+                            val meta = pendingFileMetas[update.payloadId]
+                            if (meta != null) {
+                                android.util.Log.e("NcapFile", "onPayloadTransferUpdate meta ready — processing file immediately")
+                                incomingFilePayloads.remove(update.payloadId)
+                                scope.launch {
+                                    handleIncomingFile(endpointId, publicKey, stashedPayload)
+                                }
+                            } else {
+                                android.util.Log.e("NcapFile", "onPayloadTransferUpdate meta NOT ready — deferring until meta arrives")
                             }
                         }
                     }
@@ -578,18 +711,23 @@ class NcapManagerImpl @Inject constructor(
         senderPublicKey: String,
         payload: Payload
     ) {
-        val blocked = blockedPeerDao.isBlocked(senderPublicKey)
-        if (blocked) {
-            Timber.d("Blocked peer payload dropped: ${senderPublicKey.take(8)}...")
-            return
-        }
-
+        android.util.Log.e("NcapFile", "handleIncomingPayload type=${payload.type} from ${senderPublicKey.take(8)}")
         if (payload.type != Payload.Type.BYTES) return
 
         val bytes = payload.asBytes() ?: return
 
         val envelope = NcapEnvelope.parse(bytes) ?: run {
-            Timber.d("Unknown/unparseable envelope from ${senderPublicKey.take(8)}...")
+            android.util.Log.e("NcapFile", "envelope parse FAILED for ${senderPublicKey.take(8)} — checking raw JSON")
+            try {
+                val json = org.json.JSONObject(String(bytes, Charsets.UTF_8))
+                if (json.optString("type", "") == "wifi_p2p") {
+                    wifiP2pHandler.onP2pPayload(senderPublicKey, endpointId, json)
+                } else {
+                    android.util.Log.e("NcapFile", "raw JSON not wifi_p2p either — DROPPING payload")
+                }
+            } catch (_: Exception) {
+                android.util.Log.e("NcapFile", "raw JSON parse also FAILED — DROPPING payload")
+            }
             return
         }
         Timber.d("handleIncomingPayload: fmt=${envelope::class.simpleName} from ${senderPublicKey.take(8)}...")
@@ -631,33 +769,54 @@ class NcapManagerImpl @Inject constructor(
                             val pk = identityJson.getString("publicKey")
                             val displayName = identityJson.getString("displayName")
                             if (pk != senderPublicKey) {
-                                // Unauthenticated identity claim — a peer may only describe itself
                                 Timber.w("INITIAL_IDENTITY publicKey mismatch from ${senderPublicKey.take(8)}..., dropped")
                                 return
                             }
-                            profileDao.insert(Profile(pk, displayName))
-                            val contact = contactDao.getByPublicKey(pk)
-                            if (contact != null) {
-                                contactDao.update(com.offnetic.data.local.db.entity.Contact(
-                                    publicKey = pk,
-                                    displayName = displayName,
-                                    isVerified = contact.isVerified,
-                                    addedAt = contact.addedAt,
-                                    lastSeenAt = contact.lastSeenAt,
-                                    lastPingedAt = contact.lastPingedAt
-                                ))
-                                Timber.d("Updated contact $displayName from INITIAL_IDENTITY")
-                            } else {
-                                val newContact = com.offnetic.data.local.db.entity.Contact(
-                                    publicKey = pk,
-                                    displayName = displayName,
-                                    isVerified = false,
-                                    addedAt = System.currentTimeMillis(),
-                                    lastSeenAt = System.currentTimeMillis()
-                                )
-                                contactDao.insertIfNotExists(newContact)
-                                Timber.d("Created contact $displayName from INITIAL_IDENTITY")
+                            val existingContact = contactDao.getByPublicKey(pk)
+                            if (existingContact != null) {
+                                Timber.d("Contact $displayName already known, updating peers")
+                                endpointPeers.entries
+                                    .filter { it.value.publicKey == pk && !it.value.isContact }
+                                    .forEach { (eid, peer) ->
+                                        endpointPeers[eid] = peer.copy(
+                                            displayName = displayName,
+                                            isContact = true
+                                        )
+                                    }
+                                emitPeers()
+                                return
                             }
+                            profileDao.insert(Profile(pk, displayName))
+                            val newContact = com.offnetic.data.local.db.entity.Contact(
+                                publicKey = pk,
+                                displayName = displayName,
+                                isVerified = false,
+                                addedAt = System.currentTimeMillis(),
+                                lastSeenAt = System.currentTimeMillis()
+                            )
+                            contactDao.insertIfNotExists(newContact)
+                            Timber.d("Created contact $displayName from INITIAL_IDENTITY")
+                            val systemMsg = com.offnetic.data.local.db.entity.Message(
+                                sessionId = pk,
+                                chatId = pk,
+                                senderPublicKey = pk,
+                                content = "Chat established via QR pairing",
+                                type = com.offnetic.data.local.db.entity.Message.TYPE_SYSTEM,
+                                timestamp = System.currentTimeMillis(),
+                                isSent = true,
+                                isRead = true
+                            )
+                            messageDao.insert(systemMsg)
+                            endpointPeers.entries
+                                .filter { it.value.publicKey == pk }
+                                .forEach { (eid, peer) ->
+                                    endpointPeers[eid] = peer.copy(
+                                        displayName = displayName,
+                                        isContact = true
+                                    )
+                                }
+                            emitPeers()
+                            scope.launch { reconnectToContact(pk) }
                         } catch (e: Exception) {
                             Timber.w(e, "Failed to process INITIAL_IDENTITY")
                         }
@@ -674,6 +833,14 @@ class NcapManagerImpl @Inject constructor(
                                 mimeType = metaJson.getString("mimeType"),
                                 durationLabel = metaJson.optString("duration").takeIf { it.isNotEmpty() }
                             )
+                            val waitingPayload = incomingFilePayloads[payloadId]
+                            if (waitingPayload != null) {
+                                android.util.Log.e("NcapFile", "FILE_TRANSFER_REQUEST meta arrived — file was waiting, processing now")
+                                incomingFilePayloads.remove(payloadId)
+                                scope.launch {
+                                    handleIncomingFile(endpointId, senderPublicKey, waitingPayload)
+                                }
+                            }
                         } catch (e: Exception) {
                             Timber.w(e, "Failed to parse file transfer meta")
                         }
@@ -752,16 +919,16 @@ class NcapManagerImpl @Inject constructor(
     }
 
     private suspend fun handleSignalMessage(senderPublicKey: String, ciphertext: ByteArray) {
-        Timber.d("handleSignalMessage: decrypting ${ciphertext.size}B from ${senderPublicKey.take(8)}...")
+        android.util.Log.e("NcapFile", "handleSignalMessage decrypting ${ciphertext.size}B from ${senderPublicKey.take(8)}")
         val identity = identityDao.getIdentity()
         val myPublicKey = identity?.publicKey ?: run {
-            Timber.w("No local identity, cannot decrypt")
+            android.util.Log.e("NcapFile", "No local identity, cannot decrypt")
             return
         }
 
         val decrypted = signalProtocolManager.decryptMessage(senderPublicKey, ciphertext)
         if (decrypted == null) {
-            Timber.w("handleSignalMessage: decryption FAILED for ${senderPublicKey.take(8)}...")
+            android.util.Log.e("NcapFile", "DECRYPTION FAILED for ${senderPublicKey.take(8)}")
             val hasSession = signalProtocolManager.hasSession(senderPublicKey)
             if (!hasSession) {
                 Timber.d("No session exists for ${senderPublicKey.take(8)}..., requesting PRE_KEY_BUNDLE")
@@ -792,6 +959,8 @@ class NcapManagerImpl @Inject constructor(
         }
 
         decryptFailureCounts.remove(senderPublicKey)
+
+        android.util.Log.e("NcapFile", "Decryption OK, parsing JSON: ${String(decrypted, Charsets.UTF_8).take(60)}")
 
         val decryptedStr = String(decrypted, Charsets.UTF_8)
         val decryptedJson = try {
@@ -857,21 +1026,21 @@ class NcapManagerImpl @Inject constructor(
             }
         }
         messageDao.insert(entity)
-        Timber.d("handleSignalMessage: inserted msg type=$msgType from ${senderPublicKey.take(8)}...")
+        android.util.Log.e("NcapFile", "MESSAGE INSERTED: type=$msgType chatId=${chatId.take(8)} content=${entity.content.take(30)}")
 
-        val existingContact = contactDao.getByPublicKey(senderPublicKey)
+        val existingContact = contactDao.getByPublicKey(chatId)
         if (existingContact == null) {
             val contact = com.offnetic.data.local.db.entity.Contact(
-                publicKey = senderPublicKey,
-                displayName = senderPublicKey.take(12) + "...",
+                publicKey = chatId,
+                displayName = chatId.take(12) + "...",
                 isVerified = false,
                 addedAt = System.currentTimeMillis(),
                 lastSeenAt = System.currentTimeMillis()
             )
             contactDao.insertIfNotExists(contact)
-            Timber.d("Auto-created contact for ${senderPublicKey.take(8)}...")
+            Timber.d("Auto-created contact for ${chatId.take(8)}...")
         } else {
-            contactDao.updateLastSeen(senderPublicKey, System.currentTimeMillis())
+            contactDao.updateLastSeen(chatId, System.currentTimeMillis())
         }
 
         val message = com.offnetic.domain.model.Message.fromEntity(entity)
@@ -880,12 +1049,21 @@ class NcapManagerImpl @Inject constructor(
     }
 
     private suspend fun handleIncomingFile(endpointId: String, senderPublicKey: String, payload: Payload) {
-        if (blockedPeerDao.isBlocked(senderPublicKey)) {
-            Timber.d("Blocked peer file dropped: ${senderPublicKey.take(8)}...")
+        if (callActiveCount > 0) {
+            android.util.Log.e("NcapFile", "handleIncomingFile: call active (count=$callActiveCount), deferring payloadId=${payload.id}")
+            deferredFilePayloads[payload.id] = Pair(endpointId, payload)
             return
         }
-        val filePayload = payload.asFile() ?: return
+        handleIncomingFileInternal(endpointId, senderPublicKey, payload)
+    }
+
+    private suspend fun handleIncomingFileInternal(endpointId: String, senderPublicKey: String, payload: Payload) {
+        val filePayload = payload.asFile() ?: run {
+            android.util.Log.e("NcapFile", "handleIncomingFile: payload.asFile() is null for ${senderPublicKey.take(8)}")
+            return
+        }
         val meta = pendingFileMetas.remove(payload.id)
+        android.util.Log.e("NcapFile", "handleIncomingFile: payloadId=${payload.id} meta=${meta != null} fileName=${meta?.fileName} mimeType=${meta?.mimeType} for ${senderPublicKey.take(8)}")
         val fileName = meta?.fileName ?: "file"
         val mimeType = meta?.mimeType ?: ""
         val timestamp = System.currentTimeMillis()
@@ -896,27 +1074,38 @@ class NcapManagerImpl @Inject constructor(
                 destDir.mkdirs()
                 val destFile = java.io.File(destDir, "${timestamp}_$fileName")
                 val tmpFile = filePayload.asJavaFile()
+                android.util.Log.e("NcapFile", "handleIncomingFile: saving $fileName — asJavaFile=${tmpFile != null} exists=${tmpFile?.exists()}")
                 if (tmpFile != null && tmpFile.exists()) {
                     if (!tmpFile.renameTo(destFile)) {
                         tmpFile.copyTo(destFile, overwrite = true)
                         tmpFile.delete()
                     }
+                    android.util.Log.e("NcapFile", "handleIncomingFile: saved via JavaFile to ${destFile.absolutePath} (size=${destFile.length()})")
                     destFile.absolutePath
                 } else {
-                    // API 29+: file payloads are backed by a content Uri, not a java File
                     val uri = filePayload.asUri()
+                    android.util.Log.e("NcapFile", "handleIncomingFile: asJavaFile null/not-exists, trying URI — uri=$uri")
                     if (uri != null) {
                         context.contentResolver.openInputStream(uri)?.use { input ->
                             destFile.outputStream().use { output -> input.copyTo(output) }
-                        } ?: return@withContext null
+                            android.util.Log.e("NcapFile", "handleIncomingFile: saved via URI to ${destFile.absolutePath} (size=${destFile.length()})")
+                        } ?: run {
+                            android.util.Log.e("NcapFile", "handleIncomingFile: openInputStream returned null for $uri")
+                            return@withContext null
+                        }
                         destFile.absolutePath
-                    } else null
+                    } else {
+                        android.util.Log.e("NcapFile", "handleIncomingFile: asUri also null — cannot save $fileName")
+                        null
+                    }
                 }
             } catch (e: Exception) {
-                Timber.w(e, "Failed to save incoming file $fileName")
+                android.util.Log.e("NcapFile", "handleIncomingFile: save failed: ${e.message}", e)
                 null
             }
         }
+
+        android.util.Log.e("NcapFile", "handleIncomingFile: savedPath=$savedPath mimeType=$mimeType fileName=$fileName")
 
         val isVoiceNote = mimeType.startsWith("audio/")
         val entity = com.offnetic.data.local.db.entity.Message(
@@ -940,46 +1129,54 @@ class NcapManagerImpl @Inject constructor(
 
         val message = com.offnetic.domain.model.Message.fromEntity(entity)
         _incomingMessages.emit(message)
-        Timber.d("Incoming file saved: $fileName from ${senderPublicKey.take(8)}... (path=$savedPath)")
+        android.util.Log.e("NcapFile", "handleIncomingFile: done — content=${entity.content} type=${entity.type} attachmentPath=${entity.attachmentPath}")
     }
 
     private suspend fun handleEndpointFound(endpointId: String, publicKey: String) {
-        val isBlocked = blockedPeerDao.isBlocked(publicKey)
-        if (isBlocked) {
-            Timber.d("Blocked peer dropped: ${publicKey.take(8)}...")
+        android.util.Log.e("NcapConn", "handleEndpointFound: eid=${endpointId.take(6)} key=${publicKey.take(12)}...")
+        if (!endpointPeers.containsKey(endpointId)) {
+            endpointPeers[endpointId] = PeerInfo(
+                endpointId = endpointId,
+                publicKey = publicKey,
+                displayName = publicKey.take(12),
+                isContact = false,
+                connectionState = ConnectionState.DISCONNECTED,
+                lastSeenAt = System.currentTimeMillis(),
+                lastPingedAt = 0L
+            )
+            emitPeers()
+        }
+
+        val contact = contactDao.getByPublicKey(publicKey)
+        if (contact == null) {
+            Timber.d("Non-contact peer stored for later: ${publicKey.take(8)}...")
             return
         }
 
         val now = System.currentTimeMillis()
-        val contact = contactDao.getByPublicKey(publicKey)
-
-        val displayName = contact?.displayName ?: "Unknown"
-        val isContact = contact != null
-        val lastSeenAt = contact?.lastSeenAt ?: 0L
-        val lastPingedAt = contact?.lastPingedAt ?: 0L
-
+        val displayName = contact.displayName
+        val lastSeenAt = contact.lastSeenAt
+        val lastPingedAt = contact.lastPingedAt
         val timeSinceLastSeen = now - lastSeenAt
 
-        if (contact != null) {
-            val pingsEnabled = prefs.proximityPingsEnabled.firstOrNull() ?: true
-            val thresholdMinutes = prefs.proximityPingThresholdMinutes.firstOrNull() ?: 30
-            val thresholdMs = thresholdMinutes * 60 * 1000L
+        val pingsEnabled = prefs.proximityPingsEnabled.firstOrNull() ?: true
+        val thresholdMinutes = prefs.proximityPingThresholdMinutes.firstOrNull() ?: 30
+        val thresholdMs = thresholdMinutes * 60 * 1000L
 
-            if (!pingsEnabled) {
-                Timber.d("Proximity pings disabled, skipping")
-            } else when {
-                timeSinceLastSeen < PROXIMITY_SILENT_MS -> {
-                    Timber.d("Proximity: silent (${timeSinceLastSeen / 1000}s since last seen)")
-                }
-                timeSinceLastSeen >= thresholdMs -> {
-                    val timeSinceLastPing = now - lastPingedAt
-                    if (timeSinceLastPing >= PING_COOLDOWN_MS) {
-                        proximityPingNotifier.firePing(displayName)
-                        contactDao.updateLastPinged(publicKey, now)
-                        Timber.d("Proximity ping fired: $displayName")
-                    } else {
-                        Timber.d("Proximity ping suppressed (cooldown): $displayName")
-                    }
+        if (!pingsEnabled) {
+            Timber.d("Proximity pings disabled, skipping")
+        } else when {
+            timeSinceLastSeen < PROXIMITY_SILENT_MS -> {
+                Timber.d("Proximity: silent (${timeSinceLastSeen / 1000}s since last seen)")
+            }
+            timeSinceLastSeen >= thresholdMs -> {
+                val timeSinceLastPing = now - lastPingedAt
+                if (timeSinceLastPing >= PING_COOLDOWN_MS) {
+                    proximityPingNotifier.firePing(displayName)
+                    contactDao.updateLastPinged(publicKey, now)
+                    Timber.d("Proximity ping fired: $displayName")
+                } else {
+                    Timber.d("Proximity ping suppressed (cooldown): $displayName")
                 }
             }
         }
@@ -988,8 +1185,7 @@ class NcapManagerImpl @Inject constructor(
             endpointId = endpointId,
             publicKey = publicKey,
             displayName = displayName,
-            isContact = isContact,
-            isBlocked = false,
+            isContact = true,
             connectionState = ConnectionState.DISCONNECTED,
             lastSeenAt = now,
             lastPingedAt = lastPingedAt
@@ -997,9 +1193,37 @@ class NcapManagerImpl @Inject constructor(
 
         endpointPeers[endpointId] = peer
         emitPeers()
-        Timber.d("handleEndpointFound: added peer ${publicKey.take(8)}... (contact=$isContact), now requesting connection")
-        android.util.Log.e("NcapConn", "FOUND peer ${publicKey.take(12)}... → requesting connection")
-        requestConnection(endpointId)
+
+        val myIdentity = identityDao.getIdentity()
+        if (myIdentity != null) {
+            val myKey = myIdentity.publicKey
+            when {
+                myKey < publicKey -> {
+                    Timber.d("handleEndpointFound: initiating connection to ${publicKey.take(8)}... (lower key)")
+                    android.util.Log.e("NcapConn", "FOUND contact ${publicKey.take(12)}... → requesting connection")
+                    requestConnection(endpointId)
+                }
+                myKey == publicKey -> {
+                    Timber.w("handleEndpointFound: detected self, ignoring")
+                }
+                else -> {
+                    Timber.d("handleEndpointFound: waiting for ${publicKey.take(8)}... (lower key) to initiate")
+                    scope.launch {
+                        kotlinx.coroutines.delay(10_000L)
+                        val currentState = endpointPeers[endpointId]?.connectionState
+                        if (currentState == ConnectionState.DISCONNECTED) {
+                            Timber.d("handleEndpointFound: retry timeout — taking over for ${publicKey.take(8)}...")
+                            android.util.Log.e("NcapConn", "RETRY timeout → requesting connection to ${publicKey.take(12)}...")
+                            requestConnection(endpointId)
+                        } else {
+                            Timber.d("handleEndpointFound: retry timeout — peer ${publicKey.take(8)}... state=$currentState, skipping")
+                        }
+                    }
+                }
+            }
+        } else {
+            Timber.w("handleEndpointFound: no local identity, cannot initiate")
+        }
     }
 
     private suspend fun handleEndpointLost(endpointId: String) {

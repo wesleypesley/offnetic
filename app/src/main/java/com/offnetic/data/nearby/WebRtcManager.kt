@@ -1,6 +1,10 @@
 package com.offnetic.data.nearby
 
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
+import android.provider.Settings
+import androidx.core.content.ContextCompat
 import com.offnetic.data.crypto.NcapEnvelope
 import com.offnetic.domain.model.CallPhase
 import com.offnetic.domain.model.CallState
@@ -13,6 +17,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import org.json.JSONObject
 import org.webrtc.AudioSource
 import org.webrtc.AudioTrack
@@ -42,7 +47,8 @@ import javax.inject.Singleton
 @Singleton
 class WebRtcManager(
     private val context: Context,
-    private val ncapManager: NcapManager
+    private val ncapManager: NcapManager,
+    private val wifiP2pHandler: WifiP2pHandler
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val factoryScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -77,6 +83,24 @@ class WebRtcManager(
 
     companion object {
         val pendingIncomingOffers = ConcurrentHashMap<String, Pair<String, String>>()
+
+        fun hasWifiP2pPermission(context: Context): Boolean {
+            val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                android.Manifest.permission.NEARBY_WIFI_DEVICES
+            } else {
+                android.Manifest.permission.ACCESS_FINE_LOCATION
+            }
+            if (ContextCompat.checkSelfPermission(context, permission) != PackageManager.PERMISSION_GRANTED) {
+                return false
+            }
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+                try {
+                    val locationMode = Settings.Secure.getInt(context.contentResolver, Settings.Secure.LOCATION_MODE)
+                    if (locationMode == Settings.Secure.LOCATION_MODE_OFF) return false
+                } catch (_: Settings.SettingNotFoundException) {}
+            }
+            return true
+        }
     }
 
     fun initialize() {
@@ -106,13 +130,14 @@ class WebRtcManager(
             try {
                 PeerConnectionFactory.initialize(
                     PeerConnectionFactory.InitializationOptions.builder(context)
-                        .setFieldTrials("")
+                        .setFieldTrials("WebRTC-IncludeWifiDirect/Enabled/")
                         .createInitializationOptions()
                 )
 
                 val options = PeerConnectionFactory.Options().apply {
                     disableEncryption = false
                     disableNetworkMonitor = true
+                    networkIgnoreMask = 0
                 }
 
                 val audioModule = JavaAudioDeviceModule.builder(context)
@@ -149,17 +174,23 @@ class WebRtcManager(
     fun getCallState(peerPublicKey: String): MutableStateFlow<CallState> {
         return _callStates.getOrPut(peerPublicKey) {
             MutableStateFlow(CallState())
+        }.also { flow ->
+            if (flow.value.phase == CallPhase.ENDED) {
+                android.util.Log.e("offCall", "getCallState resetting stale ENDED for ${peerPublicKey.take(8)}")
+                flow.value = CallState()
+            }
         }
     }
 
     fun startCall(peerPublicKey: String, isVideo: Boolean, peerDisplayName: String) {
         android.util.Log.e("offCall", "startCall peer=${peerPublicKey.take(8)} video=$isVideo")
+        ncapManager.setCallActive(true)
         iceCandidateCache.remove(peerPublicKey)
         pendingSdpOffers.remove(peerPublicKey)
         pendingOfferEndpoints.remove(peerPublicKey)
         pendingSdpAnswers.remove(peerPublicKey)
         val state = getCallState(peerPublicKey)
-        state.update { it.copy(phase = CallPhase.OUTGOING, isVideo = isVideo, peerPublicKey = peerPublicKey, peerDisplayName = peerDisplayName, connectedAt = 0L) }
+        state.update { it.copy(phase = CallPhase.OUTGOING, isVideo = isVideo, peerPublicKey = peerPublicKey, peerDisplayName = peerDisplayName, connectedAt = 0L, error = "") }
 
         scope.launch {
             try {
@@ -208,6 +239,7 @@ class WebRtcManager(
                                     json.toString().toByteArray(Charsets.UTF_8)
                                 )
                                 android.util.Log.e("offCall", "CALL_OFFER sent to $endpointId")
+                                injectP2pCandidate(peerPublicKey, endpointId, sdp.description)
                                 state.update { it.copy(phase = CallPhase.CONNECTING) }
                                 launchCallTimeout(peerPublicKey, state)
                             }
@@ -230,10 +262,12 @@ class WebRtcManager(
 
     fun acceptCall(peerPublicKey: String) {
         android.util.Log.e("offCall", "acceptCall peer=${peerPublicKey.take(8)}")
+        ncapManager.setCallActive(true)
         iceCandidateCache.remove(peerPublicKey)
         val state = getCallState(peerPublicKey)
         val currentState = state.value
         val isVideo = currentState.isVideo
+        state.update { it.copy(error = "") }
 
         scope.launch {
             try {
@@ -331,6 +365,7 @@ class WebRtcManager(
                                 json.toString().toByteArray(Charsets.UTF_8)
                             )
                             android.util.Log.e("offCall", "CALL_ANSWER sent to $endpointId")
+                            injectP2pCandidate(peerPublicKey, endpointId, sdp.description)
                             state.update { it.copy(phase = CallPhase.CONNECTING) }
 
                             iceCandidateCache[peerPublicKey]?.forEach { candidate ->
@@ -384,6 +419,18 @@ class WebRtcManager(
         val sigState = pc.signalingState()
         android.util.Log.e("WebRTC_ICE", "onSdpReceived: setting remote ${sdp.type} for ${peerPublicKey.take(8)}... sigState=$sigState")
 
+        if (sdp.type == SessionDescription.Type.OFFER && sigState == PeerConnection.SignalingState.HAVE_LOCAL_OFFER) {
+            android.util.Log.e("WebRTC_ICE", "onSdpReceived: stale PC in HAVE_LOCAL_OFFER — discarding and caching new offer")
+            peerConnections.remove(peerPublicKey)?.let {
+                it.close()
+                it.dispose()
+            }
+            pendingSdpOffers[peerPublicKey] = sdp
+            if (endpointId.isNotEmpty()) pendingOfferEndpoints[peerPublicKey] = endpointId
+            state.update { it.copy(phase = CallPhase.INCOMING, error = "") }
+            return
+        }
+
         if (sdp.type == SessionDescription.Type.ANSWER && sigState != PeerConnection.SignalingState.HAVE_LOCAL_OFFER) {
             android.util.Log.e("WebRTC_ICE", "onSdpReceived: caching ANSWER (sigState=$sigState) — will apply after local desc set")
             pendingSdpAnswers[peerPublicKey] = sdp
@@ -432,6 +479,7 @@ class WebRtcManager(
         Timber.d("onCallHangup: remote hangup for ${peerPublicKey.take(8)}...")
         val state = getCallState(peerPublicKey)
         state.update { it.copy(phase = CallPhase.ENDED) }
+        wifiP2pHandler.teardown()
         cleanupPeerConnection(peerPublicKey)
     }
 
@@ -451,16 +499,17 @@ class WebRtcManager(
         }
         val state = getCallState(peerPublicKey)
         state.update { it.copy(phase = CallPhase.ENDED) }
+        wifiP2pHandler.teardown()
         cleanupPeerConnection(peerPublicKey)
     }
 
     fun toggleMute(peerPublicKey: String) {
         val state = getCallState(peerPublicKey)
         val isMuted = !state.value.isMuted
-        val json = JSONObject().apply { put("mute", isMuted) }
-        if (!sendOnDataChannel(peerPublicKey, json.toString())) return
         state.update { it.copy(isMuted = isMuted) }
         localAudioTracks[peerPublicKey]?.setEnabled(!isMuted)
+        val json = JSONObject().apply { put("mute", isMuted) }
+        sendOnDataChannel(peerPublicKey, json.toString())
     }
 
     fun toggleSpeaker(peerPublicKey: String) {
@@ -469,7 +518,24 @@ class WebRtcManager(
         state.update { it.copy(isSpeakerOn = speakerOn) }
 
         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
-        audioManager.isSpeakerphoneOn = speakerOn
+        try {
+            @Suppress("DEPRECATION")
+            audioManager.isSpeakerphoneOn = speakerOn
+        } catch (e: Exception) {
+            android.util.Log.e("offCall", "toggleSpeaker failed: ${e.message}")
+        }
+    }
+
+    fun setSpeakerOn(peerPublicKey: String) {
+        val state = getCallState(peerPublicKey)
+        state.update { it.copy(isSpeakerOn = true) }
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+        try {
+            @Suppress("DEPRECATION")
+            audioManager.isSpeakerphoneOn = true
+        } catch (e: Exception) {
+            android.util.Log.e("offCall", "setSpeakerOn failed: ${e.message}")
+        }
     }
 
     fun toggleCamera(peerPublicKey: String) {
@@ -479,14 +545,13 @@ class WebRtcManager(
         localVideoTracks[peerPublicKey]?.setEnabled(isCameraOn)
     }
 
+    fun enterP2pDiscoveryMode(peerPublicKey: String) {
+        // NCAPI P2P_CLUSTER handles Wi-Fi Direct automatically
+    }
+
     fun setCameraEnabled(peerPublicKey: String, enabled: Boolean) {
         val state = getCallState(peerPublicKey)
         if (state.value.isCameraOn == enabled) return
-        val json = JSONObject().apply { put("camera", enabled) }
-        if (!sendOnDataChannel(peerPublicKey, json.toString())) {
-            android.util.Log.e("offCall", "setCameraEnabled DataChannel send failed for ${peerPublicKey.take(8)}")
-            return
-        }
         android.util.Log.e("offCall", "setCameraEnabled $enabled capturer=${videoCapturers[peerPublicKey] != null} track=${localVideoTracks[peerPublicKey] != null}")
         state.update { it.copy(isCameraOn = enabled) }
         localVideoTracks[peerPublicKey]?.setEnabled(enabled)
@@ -497,15 +562,22 @@ class WebRtcManager(
             videoCapturers[peerPublicKey]?.stopCapture()
             android.util.Log.e("offCall", "setCameraEnabled stopCapture done")
         }
+        val json = JSONObject().apply { put("camera", enabled) }
+        sendOnDataChannel(peerPublicKey, json.toString())
     }
 
     fun flipCamera(peerPublicKey: String) {
-        val state = getCallState(peerPublicKey)
-        val isFront = !state.value.isFrontCamera
-        state.update { it.copy(isFrontCamera = isFront) }
-
         val capturer = videoCapturers[peerPublicKey] as? CameraVideoCapturer ?: return
-        capturer.switchCamera(null)
+        capturer.switchCamera(object : CameraVideoCapturer.CameraSwitchHandler {
+            override fun onCameraSwitchDone(isFrontCamera: Boolean) {
+                val state = getCallState(peerPublicKey)
+                state.update { it.copy(isFrontCamera = isFrontCamera) }
+                android.util.Log.e("offCall", "Camera switched — front=$isFrontCamera")
+            }
+            override fun onCameraSwitchError(error: String) {
+                android.util.Log.e("offCall", "Camera switch failed: $error")
+            }
+        })
     }
 
     fun initSurface(renderer: SurfaceViewRenderer) {
@@ -707,7 +779,8 @@ class WebRtcManager(
 
         return object : PeerConnection.Observer {
             override fun onIceCandidate(candidate: IceCandidate) {
-                android.util.Log.e("WebRTC_ICE", "onIceCandidate gathered for ${peerPublicKey.take(8)}...")
+                val sdp = candidate.sdp
+                android.util.Log.e("WebRTC_ICE", "onIceCandidate ${peerPublicKey.take(8)}: ${sdp}")
                 scope.launch {
                     sendIceCandidateToPeer(peerPublicKey, candidate)
                 }
@@ -855,6 +928,40 @@ class WebRtcManager(
         )
     }
 
+    private suspend fun injectP2pCandidate(peerPublicKey: String, endpointId: String, localSdp: String) {
+        val p2pIp = try {
+            java.net.NetworkInterface.getNetworkInterfaces()?.asSequence()
+                ?.find { it.displayName == "p2p0" }
+                ?.inetAddresses?.asSequence()
+                ?.find { it.hostAddress?.startsWith("192.168.49.") == true }
+                ?.hostAddress
+        } catch (e: Exception) { null }
+        if (p2pIp == null) {
+            android.util.Log.e("offCall", "injectP2pCandidate: no p2p0 interface found")
+            return
+        }
+        val ufrag = Regex("a=ice-ufrag:(\\S+)").find(localSdp)?.groupValues?.get(1)
+        if (ufrag == null) {
+            android.util.Log.e("offCall", "injectP2pCandidate: no ufrag in SDP")
+            return
+        }
+        val foundation = Math.abs(p2pIp.hashCode()) % 2_000_000_000
+        val sdp = "candidate:${foundation} 1 udp 2122252543 $p2pIp 58000 typ host generation 0 ufrag $ufrag"
+        android.util.Log.e("offCall", "injectP2pCandidate: sending $p2pIp to ${peerPublicKey.take(8)}")
+        val candidate = IceCandidate("0", 0, sdp)
+        scope.launch {
+            ncapManager.sendCallSignal(
+                endpointId,
+                NcapEnvelope.PayloadType.ICE_CANDIDATE,
+                JSONObject().apply {
+                    put("sdp", sdp)
+                    put("sdpMid", "0")
+                    put("sdpMLineIndex", 0)
+                }.toString().toByteArray(Charsets.UTF_8)
+            )
+        }
+    }
+
     private fun sendOnDataChannel(peerPublicKey: String, message: String): Boolean {
         val channel = dataChannels[peerPublicKey]
         if (channel == null || channel.state() != DataChannel.State.OPEN) {
@@ -872,6 +979,10 @@ class WebRtcManager(
 
     private fun cleanupPeerConnection(peerPublicKey: String) {
         Timber.d("cleanupPeerConnection: ${peerPublicKey.take(8)}...")
+        localProxies[peerPublicKey]?.setTarget(null)
+        remoteProxies[peerPublicKey]?.setTarget(null)
+        android.util.Log.e("offCall", "proxy targets nulled for ${peerPublicKey.take(8)}")
+        ncapManager.setCallActive(false)
         disconnectGraceJobs.remove(peerPublicKey)?.cancel()
         dataChannels.remove(peerPublicKey)?.let {
             it.close()
@@ -922,8 +1033,13 @@ class WebRtcManager(
         remoteVideoTracks.clear()
         iceCandidateCache.clear()
         _callStates.clear()
+        localProxies.clear()
+        remoteProxies.clear()
+        rendererTracks.clear()
+        wifiP2pHandler.destroy()
         peerConnectionFactory?.dispose()
         eglBase?.release()
         initialized = false
     }
+
 }

@@ -33,8 +33,6 @@ import com.offnetic.ui.theme.FontFamilySyne
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit = {},
-    onAccountClick: () -> Unit = {},
-    onBlockedContactsClick: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     Scaffold(
@@ -51,26 +49,16 @@ fun SettingsScreen(
                     Text("← Back", fontFamily = FontFamilySyne, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = Color.White)
                 }
             }
-            SettingsContent(
-                onAccountClick = onAccountClick,
-                onBlockedContactsClick = onBlockedContactsClick,
-                viewModel = viewModel
-            )
+            SettingsContent()
         }
     }
 }
 
 @Composable
 fun SettingsContent(
-    onAccountClick: () -> Unit = {},
-    onBlockedContactsClick: () -> Unit = {},
-    onScoutModeToggle: (Boolean) -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
-    val isDiscoverable by viewModel.isDiscoverable.collectAsState()
-    val backgroundScanning by viewModel.isBackgroundScanningEnabled.collectAsState()
     val proximityPings by viewModel.proximityPingsEnabled.collectAsState()
-    val dataSelfDestruct by viewModel.dataSelfDestructEnabled.collectAsState()
 
     Column(
         modifier = Modifier
@@ -87,49 +75,12 @@ fun SettingsContent(
             color = Color.White
         )
         Spacer(modifier = Modifier.height(28.dp))
-        SectionHeader("Discovery")
-        ToggleRow(
-            title = "Discoverable",
-            subtitle = "Allow other devices to find you",
-            checked = isDiscoverable,
-            onToggle = { viewModel.setDiscoverable(it) }
-        )
-        ToggleRow(
-            title = "Scout Mode",
-            subtitle = "Background scanning for nearby peers",
-            checked = backgroundScanning,
-            onToggle = {
-                viewModel.setBackgroundScanningEnabled(it)
-                onScoutModeToggle(it)
-            }
-        )
-        Spacer(modifier = Modifier.height(20.dp))
         SectionHeader("Proximity Pings")
         ToggleRow(
             title = "Ping Notifications",
             subtitle = "Notify when trusted contacts are nearby",
             checked = proximityPings,
             onToggle = { viewModel.setProximityPingsEnabled(it) }
-        )
-        Spacer(modifier = Modifier.height(20.dp))
-        SectionHeader("Data")
-        ToggleRow(
-            title = "Auto-Delete Messages",
-            subtitle = "Delete messages older than retention period",
-            checked = dataSelfDestruct,
-            onToggle = { viewModel.setDataSelfDestructEnabled(it) }
-        )
-        Spacer(modifier = Modifier.height(24.dp))
-        SectionHeader("Manage")
-        NavRow(
-            title = "Account",
-            subtitle = "Username, erase data, delete account",
-            onClick = onAccountClick
-        )
-        NavRow(
-            title = "Blocked Contacts",
-            subtitle = "View and manage blocked peers",
-            onClick = onBlockedContactsClick
         )
         Spacer(modifier = Modifier.navigationBarsPadding().height(48.dp))
     }

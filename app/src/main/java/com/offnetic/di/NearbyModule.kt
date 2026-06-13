@@ -4,7 +4,6 @@ import android.content.Context
 import com.google.android.gms.nearby.connection.ConnectionsClient
 import com.google.android.gms.nearby.Nearby
 import com.offnetic.data.crypto.SignalProtocolManager
-import com.offnetic.data.local.db.dao.BlockedPeerDao
 import com.offnetic.data.local.db.dao.ContactDao
 import com.offnetic.data.local.db.dao.IdentityDao
 import com.offnetic.data.local.db.dao.MessageDao
@@ -12,6 +11,7 @@ import com.offnetic.data.local.db.dao.ProfileDao
 import com.offnetic.data.local.datastore.PreferencesRepository
 import com.offnetic.data.nearby.NcapManager
 import com.offnetic.data.nearby.NcapManagerImpl
+import com.offnetic.data.nearby.WifiP2pHandler
 import com.offnetic.util.ProximityPingNotifier
 import dagger.Module
 import dagger.Provides
@@ -34,24 +34,24 @@ object NearbyModule {
     fun provideNcapManager(
         connectionsClient: ConnectionsClient,
         identityDao: IdentityDao,
-        blockedPeerDao: BlockedPeerDao,
         contactDao: ContactDao,
         profileDao: ProfileDao,
         prefs: PreferencesRepository,
         proximityPingNotifier: ProximityPingNotifier,
         signalProtocolManager: SignalProtocolManager,
         messageDao: MessageDao,
+        wifiP2pHandler: WifiP2pHandler,
         @dagger.hilt.android.qualifiers.ApplicationContext context: Context
     ): NcapManager = NcapManagerImpl(
         connectionsClient,
         identityDao,
-        blockedPeerDao,
         contactDao,
         profileDao,
         prefs,
         proximityPingNotifier,
         signalProtocolManager,
         messageDao,
+        wifiP2pHandler,
         context
     )
 }

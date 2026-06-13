@@ -69,7 +69,7 @@ class CallViewModel @AssistedInject constructor(
         android.util.Log.e("offCall", "startOutgoingCall $displayName")
         isIncoming = false
         callStartTime = System.currentTimeMillis()
-        callStateFlow.update { it.copy(peerDisplayName = displayName, peerPublicKey = peerPublicKey) }
+        callStateFlow.update { it.copy(peerDisplayName = displayName, peerPublicKey = peerPublicKey, error = "") }
         internalScope.launch {
             if (!wifiManager.isWifiEnabled) {
                 android.util.Log.e("offCall", "startOutgoingCall WIFI OFF")
@@ -88,7 +88,7 @@ class CallViewModel @AssistedInject constructor(
         android.util.Log.e("offCall", "acceptIncomingCall $displayName")
         isIncoming = true
         callStartTime = System.currentTimeMillis()
-        callStateFlow.update { it.copy(peerDisplayName = displayName, peerPublicKey = peerPublicKey) }
+        callStateFlow.update { it.copy(peerDisplayName = displayName, peerPublicKey = peerPublicKey, error = "") }
         internalScope.launch {
             if (!wifiManager.isWifiEnabled) {
                 android.util.Log.e("offCall", "acceptIncomingCall WIFI OFF")
@@ -99,6 +99,7 @@ class CallViewModel @AssistedInject constructor(
             }
             webRtcManager.initialize()
             observeCallSignals()
+            webRtcManager.enterP2pDiscoveryMode(peerPublicKey)
             callStateFlow.update { it.copy(
                 phase = CallPhase.INCOMING, isVideo = true
             ) }
@@ -153,7 +154,7 @@ class CallViewModel @AssistedInject constructor(
     fun acceptCall() {
         android.util.Log.e("offCall", "acceptCall currentPhase=${callStateFlow.value.phase}")
         timeoutJob?.cancel()
-        callStateFlow.update { it.copy(phase = CallPhase.CONNECTING) }
+        callStateFlow.update { it.copy(phase = CallPhase.CONNECTING, error = "") }
         internalScope.launch { webRtcManager.acceptCall(peerPublicKey) }
     }
 
@@ -172,6 +173,10 @@ class CallViewModel @AssistedInject constructor(
 
     fun toggleSpeaker() {
         webRtcManager.toggleSpeaker(peerPublicKey)
+    }
+
+    fun setSpeakerOn(peerPublicKey: String) {
+        webRtcManager.setSpeakerOn(peerPublicKey)
     }
 
     fun setCameraEnabled(enabled: Boolean) {

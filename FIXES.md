@@ -468,6 +468,10 @@ All use `android.util.Log.e` (guaranteed output, even if Timber filtered):
 | File transfers broken | Fixed: native NCAPI file API (#60), metadata (#61), extension rename (#62) | ✅ |
 | Call UI disappears | Fixed: collector scope cancellation (#67) | ✅ |
 | Video call unreliable | Fixed: stale SDP filter (#68), ICE cleanup (#71), EGL init (#66) | ✅ |
+| New call killed by stale ENDED state | Fixed: `getCallState` reset + `finishRunnable` tracking + `finished=false` (#86) | ✅ |
+| Wi-Fi Direct P2P calls fail | Fixed: `disableNetworkMonitor=true` discovers p2p0, manual group creation required (#87) | ✅ |
+| Manual `WifiP2pManager` interop | WON'T FIX — hardware incompatibility. P2P group created via system Wi-Fi settings instead. | ⚠️ |
+| Calls offline (no shared Wi-Fi) | Requires manual P2P group creation before calling. No auto-P2P setup. | ⚠️ |
 
 ---
 
@@ -486,8 +490,15 @@ ChatScreen (Compose)
 
 CallActivity
   ├── callJob scope (SupervisorJob) — all collectors cancelled on new call
+  ├── finishRunnable tracking — cancels old postDelayed on state transitions, prevents double-finish
   ├── tracksBound guard — bindVideoTracks called once, renderers visible after
   └── ICE failure → cleanupPeerConnection + auto-save call history
+
+WebRtcManager
+  ├── disableNetworkMonitor = true — discovers p2p0 interface (manual P2P groups)
+  ├── injectP2pCandidate() — fallback synthetic P2P host candidate injection
+  ├── getCallState() resets stale ENDED → IDLE on old flow reuse
+  └── IceCandidate SDP fully logged for debugging
 
 NcapManagerImpl
   ├── INITIAL_IDENTITY always sent (with profile fallback + retry buffer)
@@ -503,6 +514,179 @@ File open: FileProvider → content URI with extension → setDataAndType → AC
 
 ---
 
+## Round 10 — Wi-Fi Direct Calling + QR Pairing (Major Rewrite)
+
+> **Goal: reliable peer-to-peer calls over Wi-Fi Direct, and QR-scanned contacts connecting immediately.**
+
+---
+
+### Part A — Wi-Fi Direct Call Infrastructure
+
+These fixes implement the blueprint from `implementation_plan.md`.
+
+#### A1: Deterministic initiator/responder role selection
+**File:** `WifiP2pHandler.kt:107`
+**Cause:** Both devices previously tried to act as initiator (or both waited), causing a deadlock where neither side connected.
+**Fix:** `PublicKeyNormalizer.normalize(myPublicKey) < PublicKeyNormalizer.normalize(peerPublicKey)` — lexical comparison on normalized keys. Lower key = initiator, higher key = responder. Both sides compute the same result independently — zero network round-trip needed.
+
+#### A2: MAC address discovery retry loop
+**File:** `WifiP2pHandler.kt:196-219`
+**Cause:** Previous code called `requestPeers()` ONCE after waiting for an unreliable `WIFI_P2P_PEERS_CHANGED` broadcast. If the peer's MAC wasn't in the list yet, it failed immediately with no retry.
+**Fix:** `discoverPeerWithRetry(maxAttempts = 10, intervalMs = 2000L)` — polls `requestPeers()` up to 10 times at 2s intervals. Filters out the fake MAC `02:00:00:00:00:00`. Returns first valid MAC found.
+
+#### A3: API 28 (Android 9) fallback
+**File:** `WifiP2pHandler.kt:147-160`
+**Cause:** `WifiP2pManager.createGroup(WifiP2pConfig, ActionListener)` was introduced in API 29. On API 28 devices, this call would crash or be ignored.
+**Fix:** `if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)` → `createGroup()` with retry; `else` → `connect()` fallback (available since API 16). WalkieTalkie reference also uses `connect()` exclusively.
+
+#### A4: Peer IP derivation for Group Owner
+**File:** `WifiP2pHandler.kt:184-194`
+**Cause:** When the initiator became Group Owner (GO), `info.groupOwnerAddress` returned the GO's OWN IP — not the peer's. The old code only called `callback?.onP2pReady()` when NOT the GO, so the initiator never got the peer's IP.
+**Fix:** `derivePeerIp(info)` — if not GO: returns `groupOwnerAddress` (that's the peer's IP). If GO: derives peer IP from GO's own IP (typically `192.168.49.x+1`). Callback always fires regardless of GO status.
+
+#### A5: WebRTC Ice restart on P2P link up
+**File:** `WebRtcManager.kt:56-69`
+**Cause:** The caller's initial SDP offer was created BEFORE the Wi-Fi Direct interface was available. ICE gathering completed without discovering the P2P path.
+**Fix:** `init` block registers `WifiP2pCallback` with `WifiP2pHandler`. When P2P link establishes, callback fires → `pc.restartIce()` triggers a fresh ICE gathering round that discovers the `192.168.49.x` interface. New candidates with P2P IPs trickle to the peer.
+
+#### A6: Field trial for Wi-Fi Direct interface visibility
+**File:** `WebRtcManager.kt:149`
+**Cause:** `setFieldTrials("")` — empty string. WebRTC's network monitor did not bind to the Wi-Fi Direct network interface.
+**Fix:** `setFieldTrials("WebRTC-IncludeWifiDirect/Enabled/")` — tells WebRTC to scan all network interfaces including `p2p-p2p0-*`.
+
+#### A7: Callee waits for P2P before creating answer
+**File:** `WebRtcManager.kt:304-306`
+**Cause:** `acceptCall()` created the `PeerConnection` and SDP answer immediately, before the Wi-Fi Direct link was established. The answer's ICE candidates lacked the P2P path.
+**Fix:** `wifiP2pHandler.awaitP2pConnection(peerPublicKey, timeoutMs = 25_000L)` called BEFORE `createPeerConnection()`. When the callee creates its PC, the P2P interface is already up — ICE candidates include the Wi-Fi Direct IP.
+
+#### A8: getMyPublicKey interface + implementation
+**Files:** `NcapManager.kt:49`, `NcapManagerImpl.kt:97-99`
+**Cause:** No way to retrieve the local identity public key. Required for deterministic role selection.
+**Fix:** Added `suspend fun getMyPublicKey(): String` to interface and implementation (`identityDao.getIdentity()?.publicKey`).
+
+#### A9: enterP2pDiscoveryMode param wiring
+**Files:** `WebRtcManager.kt:565-571`, `CallViewModel.kt:102`
+**Cause:** `enterP2pDiscoveryMode()` had no parameter — couldn't pass the peer's public key for role selection.
+**Fix:** Now accepts `peerPublicKey: String`. Gets `myPublicKey` from identity, passes both to `wifiP2pHandler.startP2pCall()`. Ice disconnect retry path also updated to pass `myPublicKey`.
+
+#### A10: Scope declaration order fix
+**File:** `WebRtcManager.kt:53-54,69`
+**Cause:** `init` block referenced `scope` before the `private val scope` property initializer ran (Kotlin initializers execute in declaration order).
+**Fix:** Moved `scope` and `factoryScope` above the `init` block.
+
+---
+
+### Part B — QR Pairing: Key Normalization + Contact Discovery
+
+These fixes address the root cause of "scan QR but peer shows offline / can't send messages."
+
+#### B1: Public key string mismatch between QR and NCAPI
+**File:** NEW `util/PublicKeyNormalizer.kt`
+**Cause:** Identity public keys are generated using standard Base64 (`Base64.NO_WRAP`), which produces `+`, `/`, and `=` characters. When used as NCAPI endpoint names, these characters may be sanitized, creating a different string. A QR-scanned contact stored with the original key would never match the NCAPI-discovered key.
+**Fix:** New utility class with three methods:
+- `encode(bytes)` — URL-safe Base64 (`Base64.NO_WRAP or Base64.URL_SAFE`) — no `+/=` characters
+- `normalize(key)` — strips trailing `=`, converts `-_` → `+/`. Canonical form for comparison.
+- `matches(a, b)` — compares normalized forms.
+
+#### B2: Identity generation uses URL-safe encoding
+**File:** `IdentityKeyManagerImpl.kt:56,69`
+**Cause:** Identity public key encoded with standard Base64 — produced `+/=` characters.
+**Fix:** Changed to `PublicKeyNormalizer.encode(serializedPublic)` — URL-safe encoding. No special characters that NCAPI could mangle.
+
+#### B3: Identity decode missing URL_SAFE flag
+**File:** `IdentityKeyManagerImpl.kt:96`
+**Cause:** Encode used `URL_SAFE` flag but decode did not. For ~75% of generated identities, `android.util.Base64.decode()` would silently skip `-` and `_` characters, producing a corrupt public key. All crypto would fail.
+**Fix:** Decode now uses `Base64.NO_WRAP or Base64.URL_SAFE` — matches the encode flags.
+
+#### B4: Key normalization at all NCAPI entry points
+**File:** `NcapManagerImpl.kt` — 6 call sites
+**Cause:** Incoming keys from NCAPI (advertising name, connection info, senderPublicKey, etc.) were not normalized before contact lookup. QR-scanned contacts stored with standard Base64 would never match URL-safe NCAPI keys.
+**Fix:** `PublicKeyNormalizer.normalize()` applied at:
+- `discoveryCallback.onEndpointFound` (line 303) — NCAPI discovered endpoint name
+- `onConnectionInitiated` (line 147) — incoming connection name
+- INITIAL_IDENTITY handler (lines 701,703) — both `pk` from JSON and `senderPublicKey`
+- `handleSignalMessage` chatId (line 878) — incoming message sender
+- Auto-contact creation (line 934) — uses normalized `chatId`
+- Self-detection in `handleEndpointFound` (line 1088) — `myKey` normalized
+
+#### B5: QR-scanned contacts use normalized key
+**File:** `QrScannerViewModel.kt:43,56-57`
+**Cause:** Contact and system message stored with raw key from QR data (URL-safe format). NCAPI discovery normalizes to standard format — keys never matched.
+**Fix:** `val normalizedKey = PublicKeyNormalizer.normalize(data.publicKey)` before storing contact and message. All three key sources (QR, NCAPI, DB) now converge on the same canonical form.
+
+#### B6: Non-contact peers stored in endpointPeers
+**File:** `NcapManagerImpl.kt:1051-1059`
+**Cause:** `handleEndpointFound` silently returned when no contact existed for the discovered public key. The endpoint was never stored anywhere — `reconnectToContact()` could never find it later when the contact was created.
+**Fix:** Non-contact peers are now stored in `endpointPeers` with `isContact = false`. The proximity ping logic still only runs for known contacts, but the endpoint ID is preserved for later reconnection.
+
+#### B7: reconnectToContact with retry loop
+**File:** `NcapManagerImpl.kt:466-493`
+**Cause:** `reconnectToContact` checked `endpointPeers` once — if the peer wasn't found, it called `startDiscovery()` (no-op if already running) and returned. After QR scan, the peer was never connected.
+**Fix:** `findOrAwaitEndpoint(publicKey)` retry loop — polls `endpointPeers`, if not found calls `forceRestart(name)` to restart advertising + discovery, waits 2s, retries. Up to 5 iterations (10 seconds total). Combined with B6 (storing non-contacts), the QR scan path now reliably finds and connects to the peer.
+
+#### B8: Role comparison uses normalized keys
+**File:** `WifiP2pHandler.kt:108`
+**Cause:** `myPublicKey < peerPublicKey` compared URL-safe (identity) with normalized (contact DB) formats. Inconsistent character ordering could cause both devices to compute different initiator/responder results.
+**Fix:** `PublicKeyNormalizer.normalize(myPublicKey) < PublicKeyNormalizer.normalize(peerPublicKey)` — both sides normalize to standard format before comparing.
+
+#### B9: Self-detection uses normalized keys
+**File:** `NcapManagerImpl.kt:1088`
+**Cause:** `myKey == publicKey` compared URL-safe identity key with normalized NCAPI key. Would never match for the same identity.
+**Fix:** `myKey` now normalized: `PublicKeyNormalizer.normalize(myIdentity.publicKey)`.
+
+---
+
+### Reference: Meshenger Comparison
+
+Meshenger (github.com/meshenger-app/meshenger-android) uses a fundamentally different approach:
+
+| | Meshenger | Offnetic (current) |
+|---|---|---|
+| **Discovery** | No discovery layer — QR contains IP addresses | NCAPI (Bluetooth/BLE) discovery + Wi-Fi Direct |
+| **QR content** | `{name, publicKey, addresses[]}` | `{pk, dn}` — public key only |
+| **Connection** | Direct TCP to known IP:port | NCAPI connection + PRE_KEY_BUNDLE session |
+| **Reconnect** | Pinger tries all known addresses immediately | `findOrAwaitEndpoint()` retry loop with forceRestart |
+
+Meshenger avoids discovery timing issues entirely because the QR code IS the discovery. Offnetic's approach uses NCAPI for transport flexibility (Bluetooth + Wi-Fi Direct) but requires the retry loop to bridge the async gap between contact creation and peer discovery.
+
+---
+
+## Round 10 Post-Mortem — What Worked, What Didn't
+
+### Resolved
+
+#### #86: Stale CallState flow kills new calls before they start
+**Files:** `CallActivity.kt:233-280`, `WebRtcManager.kt:173-183`
+**Symptom:** `WebRtcManager.getCallState(peer)` uses `getOrPut` which returns the same `MutableStateFlow` from a previous call. First emission of new CallActivity's collector was `ENDED` → `finished=true` → `postDelayed(finish, 1500)`. Later when `acceptCall()` failed and set ENDED again, `finished` was already `true` from the stale ENDED's postDelayed, allowing both postDelayed callbacks to fire and kill the call.
+**Fix (3-part):**
+1. **`getCallState` reset** — `WebRtcManager.kt:173-183`: when the existing flow has `phase == ENDED`, resets it to `CallState()` (IDLE) before returning, so new CallViewModel starts clean.
+2. **`finishRunnable` tracking** — `CallActivity.kt:296,275-283,236-248`: stores the `Runnable` posted to `fullscreenRenderer`. On every non-ENDED phase (IDLE/OUTGOING/CONNECTING/INCOMING), cancels any pending `finishRunnable` before setting `finished = false`. On ENDED, cancels old runnable before posting new one — no two postDelayed callbacks can coexist.
+3. **ICE candidate logging** — `WebRtcManager.kt:782`: logs full candidate SDP string (shows IPs like `192.168.49.x`).
+
+### Resolved — Wi-Fi Direct Calling Works (Manual Group Setup)
+
+#### #87: WebRTC `disableNetworkMonitor = false` hides P2P interface
+**File:** `WebRtcManager.kt:139`
+**Symptom:** WebRTC ICE only generated `127.0.0.1` and `::1` loopback candidates. The `p2p0` interface with IPs `192.168.49.1` and `192.168.49.203` was invisible — Android's `ConnectivityManager` doesn't report manually-created P2P groups. ICE never reached CONNECTED.
+**Fix:** `disableNetworkMonitor = true` + `networkIgnoreMask = 0`. WebRTC falls back to `java.net.NetworkInterface.getNetworkInterfaces()` which enumerates ALL interfaces including `p2p0`. Combined with the existing `setFieldTrials("WebRTC-IncludeWifiDirect/Enabled/")`, WebRTC now discovers and generates host candidates for the P2P IPs.
+
+#### #88: P2P candidate injection fallback
+**File:** `WebRtcManager.kt:930-962`
+**Symptom:** If `disableNetworkMonitor = true` still doesn't discover p2p0 on some devices, fallback needed.
+**Fix:** `injectP2pCandidate()` reads `p2p0` IP from `NetworkInterface`, extracts `ice-ufrag` from local SDP, builds a synthetic host candidate SDP string (`candidate:... 192.168.49.x typ host`), and sends it to the peer via NCAPI. Called from both `startCall` (after CALL_OFFER sent) and `acceptCall` (after CALL_ANSWER sent).
+
+### How Wi-Fi Direct Now Works
+1. **User creates P2P group manually** via Android Wi-Fi → Wi-Fi Direct settings (one-time)
+2. Both devices get IPs on `192.168.49.0/24` via the `p2p0` interface (verified with `ip addr`)
+3. `disableNetworkMonitor = true` makes WebRTC discover `p2p0`
+4. WebRTC generates host candidates with `192.168.49.x` IPs
+5. ICE negotiates over the P2P link → CONNECTED
+6. Video + audio work over the P2P link with full bandwidth
+
+No `WifiP2pManager` API calls needed. No `createGroup()`/`connect()`. The app simply reads the existing network interface. `WifiP2pHandler.kt` remains preserved but uncalled.
+
+---
+
 ## Hard Log Tags Reference
 
 | Tag | File | Purpose |
@@ -513,3 +697,4 @@ File open: FileProvider → content URI with extension → setDataAndType → AC
 | `WebRTC_ICE` | `WebRtcManager.kt` | ICE state, gathering, onIceCandidate, onSdpReceived, onAddTrack, camera, attachVideoTracks |
 | `VideoUI` | `CallActivity.kt` | renderer init (initSurface), tracks bound |
 | `ChatVM` | `ChatViewModel.kt` | sendEncrypted, endpoint selection, file/voice send, retryUnsentMessages |
+| `P2P_CALL` | `WifiP2pHandler.kt` | discovery retry, negotiation, P2P connected/disconnected, teardown |

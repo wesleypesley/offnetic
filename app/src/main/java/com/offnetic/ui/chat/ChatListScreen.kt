@@ -1,6 +1,5 @@
 package com.offnetic.ui.chat
 
-import android.content.Intent
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -21,14 +20,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -39,15 +33,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.offnetic.service.NcapForegroundService
 import com.offnetic.ui.theme.FontFamilySyne
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -58,6 +49,7 @@ fun ChatListScreen(
     onChatClick: (String) -> Unit = {},
     onScanQr: () -> Unit = {},
     onNearbyClick: () -> Unit = {},
+    onShutdown: () -> Unit = {},
     viewModel: ChatListViewModel = hiltViewModel()
 ) {
     Scaffold(
@@ -68,6 +60,7 @@ fun ChatListScreen(
             ChatListContent(
                 onChatClick = onChatClick,
                 onScanQr = onScanQr,
+                onShutdown = onShutdown,
                 viewModel = viewModel
             )
         }
@@ -78,32 +71,20 @@ fun ChatListScreen(
 fun ChatListContent(
     onChatClick: (String) -> Unit = {},
     onScanQr: () -> Unit = {},
+    onShutdown: () -> Unit = {},
     viewModel: ChatListViewModel
 ) {
     val chatSummaries by viewModel.chatSummaries.collectAsState()
-    val isScoutMode by viewModel.isScoutMode.collectAsState()
     val profileDisplayName by viewModel.profileDisplayName.collectAsState()
-    var showScoutDialog by remember { mutableStateOf(false) }
-    val context = LocalContext.current
-
-    if (showScoutDialog) {
-        ScoutModeDialog(
-            onDismiss = { showScoutDialog = false },
-            onEnable = {
-                showScoutDialog = false
-                viewModel.enableScoutMode()
-                context.startForegroundService(
-                    Intent(context, NcapForegroundService::class.java)
-                )
-            }
-        )
-    }
+    var showProfileDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier.fillMaxSize()
     ) {
         Header(
             onScanQr = onScanQr,
+            onShutdown = onShutdown,
+            onShowProfile = { showProfileDialog = true },
             isDiscovering = true,
             profileDisplayName = profileDisplayName
         )
@@ -114,26 +95,6 @@ fun ChatListContent(
                 .fillMaxWidth()
                 .padding(horizontal = 24.dp)
         ) {
-            item {
-                Spacer(modifier = Modifier.height(8.dp))
-
-                DiscoveryModeCard(
-                    isScoutMode = isScoutMode,
-                    onToggle = { enabled ->
-                        if (enabled) {
-                            showScoutDialog = true
-                        } else {
-                            viewModel.disableScoutMode()
-                            context.stopService(
-                                Intent(context, NcapForegroundService::class.java)
-                            )
-                        }
-                    }
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-            }
-
             if (chatSummaries.isEmpty()) {
                 item {
                     EmptyState()
@@ -148,11 +109,71 @@ fun ChatListContent(
             }
         }
     }
+
+    if (showProfileDialog) {
+        ProfileDialog(
+            displayName = profileDisplayName.ifEmpty { "No username set" },
+            onDismiss = { showProfileDialog = false }
+        )
+    }
+}
+
+@Composable
+private fun ProfileDialog(
+    displayName: String,
+    onDismiss: () -> Unit
+) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Color(0xFF141414),
+        shape = RoundedCornerShape(20.dp),
+        title = {
+            Text(
+                text = "Profile",
+                fontFamily = FontFamilySyne,
+                fontWeight = FontWeight.Bold,
+                fontSize = 20.sp,
+                color = Color.White
+            )
+        },
+        text = {
+            Column {
+                Text(
+                    text = "Username",
+                    fontFamily = FontFamilySyne,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 11.sp,
+                    letterSpacing = 1.5.sp,
+                    color = Color(0x40FFFFFF)
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = displayName,
+                    fontFamily = FontFamilySyne,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 18.sp,
+                    color = Color.White
+                )
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(onClick = onDismiss) {
+                Text(
+                    text = "Close",
+                    fontFamily = FontFamilySyne,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF3B82F6)
+                )
+            }
+        }
+    )
 }
 
 @Composable
 private fun Header(
     onScanQr: () -> Unit,
+    onShutdown: () -> Unit = {},
+    onShowProfile: () -> Unit = {},
     isDiscovering: Boolean,
     profileDisplayName: String = ""
 ) {
@@ -197,7 +218,8 @@ private fun Header(
 
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 QrButton(onClick = onScanQr)
-                AvatarInitial(initial = profileDisplayName.take(2).uppercase().ifEmpty { "?" })
+                ShutdownButton(onClick = onShutdown)
+                GearButton(onClick = onShowProfile)
             }
         }
     }
@@ -262,95 +284,81 @@ private fun AvatarInitial(initial: String) {
 }
 
 @Composable
-private fun DiscoveryModeCard(
-    isScoutMode: Boolean,
-    onToggle: (Boolean) -> Unit
-) {
+private fun ShutdownButton(onClick: () -> Unit) {
     Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
-        color = Color(0x0DFFFFFF),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x14FFFFFF))
+        modifier = Modifier
+            .size(38.dp)
+            .clickable { onClick() },
+        shape = RoundedCornerShape(12.dp),
+        color = Color(0x1AEF4444)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = if (isScoutMode) "Scout Mode" else "Standard Mode",
-                    fontFamily = FontFamilySyne,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 14.sp,
-                    color = Color.White
+        Box(contentAlignment = Alignment.Center) {
+            Canvas(modifier = Modifier.size(16.dp)) {
+                val strokeWidth = 2.5f
+                val stroke = Stroke(width = strokeWidth)
+                val color = Color(0xFFEF4444)
+                val cx = size.width / 2f
+                val cy = size.height / 2f
+                val gap = size.height * 0.08f
+                val top = size.height * 0.12f
+                val bottom = cy + gap
+
+                drawLine(
+                    color = color,
+                    start = Offset(cx, top),
+                    end = Offset(cx, bottom),
+                    strokeWidth = strokeWidth
                 )
-                Text(
-                    text = if (isScoutMode)
-                        "Background discovery active. May use more battery."
-                    else
-                        "Discovery only while app is open.",
-                    fontFamily = FontFamilySyne,
-                    fontWeight = FontWeight.Medium,
-                    fontSize = 12.sp,
-                    color = Color(0x4DFFFFFF)
+                val arcRadius = size.width * 0.32f
+                drawArc(
+                    color = color,
+                    startAngle = 140f,
+                    sweepAngle = 260f,
+                    useCenter = false,
+                    topLeft = Offset(cx - arcRadius, cy - arcRadius + gap),
+                    size = androidx.compose.ui.geometry.Size(arcRadius * 2f, arcRadius * 2f),
+                    style = stroke
                 )
             }
-            Switch(
-                checked = isScoutMode,
-                onCheckedChange = onToggle,
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = Color(0xFF0A0A0A),
-                    checkedTrackColor = Color.White,
-                    uncheckedThumbColor = Color(0x73FFFFFF),
-                    uncheckedTrackColor = Color(0x1AFFFFFF)
-                )
-            )
         }
     }
 }
 
 @Composable
-private fun ScoutModeDialog(
-    onDismiss: () -> Unit,
-    onEnable: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = Color(0xFF141414),
-        titleContentColor = Color.White,
-        textContentColor = Color(0x73FFFFFF),
-        shape = RoundedCornerShape(20.dp),
-        title = {
-            Text(
-                text = "Enable Scout Mode?",
-                fontFamily = FontFamilySyne,
-                fontWeight = FontWeight.Bold,
-                fontSize = 18.sp,
-                color = Color.White
-            )
-        },
-        text = {
-            Text(
-                text = "Receive calls, messages and nearby discovery while the app is running in the background.",
-                fontFamily = FontFamilySyne,
-                fontWeight = FontWeight.Medium,
-                fontSize = 15.sp,
-                color = Color(0x73FFFFFF)
-            )
-        },
-        confirmButton = {
-            TextButton(onClick = onEnable) {
-                Text("Enable", fontFamily = FontFamilySyne, fontWeight = FontWeight.SemiBold, color = Color.White)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", fontFamily = FontFamilySyne, fontWeight = FontWeight.SemiBold, color = Color(0xFF3B82F6))
+private fun GearButton(onClick: () -> Unit) {
+    Surface(
+        modifier = Modifier
+            .size(38.dp)
+            .clickable { onClick() },
+        shape = RoundedCornerShape(12.dp),
+        color = Color(0x12FFFFFF)
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Canvas(modifier = Modifier.size(17.dp)) {
+                val color = Color(0xB3FFFFFF)
+                val strokeWidth = 1.8f
+                val stroke = Stroke(width = strokeWidth)
+                val cx = size.width / 2f
+                val cy = size.height / 2f
+                val outerR = size.width * 0.44f
+                val innerR = size.width * 0.2f
+                val teethLen = size.width * 0.08f
+                val teethCount = 8
+                for (i in 0 until teethCount) {
+                    val angle = Math.toRadians((i * 360.0 / teethCount).toDouble())
+                    val cos = kotlin.math.cos(angle).toFloat()
+                    val sin = kotlin.math.sin(angle).toFloat()
+                    val x1 = cx + cos * (outerR - teethLen)
+                    val y1 = cy + sin * (outerR - teethLen)
+                    val x2 = cx + cos * (outerR + teethLen)
+                    val y2 = cy + sin * (outerR + teethLen)
+                    drawLine(color, Offset(x1, y1), Offset(x2, y2), strokeWidth)
+                }
+                drawCircle(color = color, radius = outerR, center = Offset(cx, cy), style = stroke)
+                drawCircle(color = color, radius = innerR, center = Offset(cx, cy), style = stroke)
             }
         }
-    )
+    }
 }
 
 @Composable

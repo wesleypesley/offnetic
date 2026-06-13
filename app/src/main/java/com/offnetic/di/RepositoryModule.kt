@@ -6,8 +6,6 @@ import com.offnetic.data.repository.MessageRepository
 import com.offnetic.data.repository.MessageRepositoryImpl
 import com.offnetic.data.repository.SessionRepository
 import com.offnetic.data.repository.SessionRepositoryImpl
-import com.offnetic.data.repository.BlockRepository
-import com.offnetic.data.repository.BlockRepositoryImpl
 import com.offnetic.data.repository.IdentityRepository
 import com.offnetic.data.repository.IdentityRepositoryImpl
 import com.offnetic.data.repository.ProfileRepository
@@ -33,10 +31,6 @@ object RepositoryModule {
     @Provides
     @Singleton
     fun provideSessionRepository(impl: SessionRepositoryImpl): SessionRepository = impl
-
-    @Provides
-    @Singleton
-    fun provideBlockRepository(impl: BlockRepositoryImpl): BlockRepository = impl
 
     @Provides
     @Singleton

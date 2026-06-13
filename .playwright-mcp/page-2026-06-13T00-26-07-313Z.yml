@@ -1,0 +1,304 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - link "Skip to content" [ref=e4] [cursor=pointer]:
+        - /url: "#start-of-content"
+      - banner [ref=e6]:
+        - heading "Navigation Menu" [level=2] [ref=e7]
+        - generic [ref=e9]:
+          - button "Toggle navigation" [ref=e11] [cursor=pointer]
+          - link "Homepage" [ref=e17] [cursor=pointer]:
+            - /url: /
+            - img [ref=e18]
+          - generic [ref=e20]:
+            - link "Sign in" [ref=e21] [cursor=pointer]:
+              - /url: /login?return_to=https%3A%2F%2Fgithub.com%2Fandroid%2Fconnectivity-samples%2Ftree%2Fmain%2FNearbyConnectionsWalkieTalkie
+            - button "Appearance settings" [ref=e24] [cursor=pointer]:
+              - img
+    - main [ref=e28]:
+      - generic [ref=e29]: This repository was archived by the owner on Jul 10, 2025. It is now read-only.
+      - generic [ref=e30]:
+        - generic [ref=e31]:
+          - generic [ref=e33]:
+            - img [ref=e34]
+            - link "android" [ref=e37] [cursor=pointer]:
+              - /url: /android
+            - generic [ref=e38]: /
+            - strong [ref=e39]:
+              - link "connectivity-samples" [ref=e40] [cursor=pointer]:
+                - /url: /android/connectivity-samples
+            - generic [ref=e41]: Public archive
+          - generic [ref=e42]:
+            - list:
+              - listitem [ref=e43]:
+                - link "You must be signed in to change notification settings" [ref=e44] [cursor=pointer]:
+                  - /url: /login?return_to=%2Fandroid%2Fconnectivity-samples
+                  - img [ref=e45]
+                  - text: Notifications
+              - listitem [ref=e47]:
+                - link "Fork 1.4k" [ref=e48] [cursor=pointer]:
+                  - /url: /login?return_to=%2Fandroid%2Fconnectivity-samples
+                  - img [ref=e49]
+                  - text: Fork
+                  - generic "1,351" [ref=e51]: 1.4k
+              - listitem [ref=e52]:
+                - link "You must be signed in to star a repository" [ref=e54] [cursor=pointer]:
+                  - /url: /login?return_to=%2Fandroid%2Fconnectivity-samples
+                  - img [ref=e55]
+                  - text: Star
+                  - generic "1783 users starred this repository" [ref=e57]: 1.8k
+        - navigation "Repository" [ref=e58]:
+          - list [ref=e59]:
+            - listitem [ref=e60]:
+              - link "Code" [ref=e61] [cursor=pointer]:
+                - /url: /android/connectivity-samples
+                - img [ref=e62]
+                - generic [ref=e64]: Code
+            - listitem [ref=e65]:
+              - link "Issues 157" [ref=e66] [cursor=pointer]:
+                - /url: /android/connectivity-samples/issues
+                - img [ref=e67]
+                - generic [ref=e70]: Issues
+                - generic "157" [ref=e71]
+            - listitem [ref=e72]:
+              - link "Pull requests 12" [ref=e73] [cursor=pointer]:
+                - /url: /android/connectivity-samples/pulls
+                - img [ref=e74]
+                - generic [ref=e76]: Pull requests
+                - generic "12" [ref=e77]
+            - listitem [ref=e78]:
+              - link "Discussions" [ref=e79] [cursor=pointer]:
+                - /url: /android/connectivity-samples/discussions
+                - img [ref=e80]
+                - generic [ref=e82]: Discussions
+            - listitem [ref=e83]:
+              - link "Actions" [ref=e84] [cursor=pointer]:
+                - /url: /android/connectivity-samples/actions
+                - img [ref=e85]
+                - generic [ref=e87]: Actions
+            - listitem [ref=e88]:
+              - link "Projects" [ref=e89] [cursor=pointer]:
+                - /url: /android/connectivity-samples/projects
+                - img [ref=e90]
+                - generic [ref=e92]: Projects
+            - listitem [ref=e93]
+            - listitem [ref=e94]
+          - button "Additional navigation options" [ref=e98] [cursor=pointer]:
+            - img
+      - generic [ref=e109]:
+        - generic [ref=e113]:
+          - generic [ref=e114]:
+            - heading "Expand file tree" [level=2] [ref=e116]:
+              - button "Expand file tree" [ref=e117] [cursor=pointer]:
+                - img [ref=e118]
+            - button "main branch" [ref=e122] [cursor=pointer]:
+              - generic [ref=e123]:
+                - generic [ref=e125]:
+                  - img [ref=e127]
+                  - generic [ref=e130]: main
+                - generic:
+                  - img
+            - generic [ref=e132]:
+              - navigation "Breadcrumbs" [ref=e133]:
+                - heading "Breadcrumbs" [level=2] [ref=e134]
+                - list [ref=e135]:
+                  - listitem [ref=e136]:
+                    - link "connectivity-samples" [ref=e137] [cursor=pointer]:
+                      - /url: /android/connectivity-samples/tree/main
+              - generic [ref=e138]:
+                - text: /
+                - heading "NearbyConnectionsWalkieTalkie" [level=1] [ref=e139]
+                - text: /
+              - button "Copy path" [ref=e140] [cursor=pointer]:
+                - img [ref=e141]
+          - generic [ref=e146]:
+            - heading "Directory actions" [level=2] [ref=e147]
+            - generic [ref=e150]:
+              - img [ref=e152]
+              - combobox "Go to file" [ref=e154]
+            - heading "More options" [level=2] [ref=e155]
+            - button "More options" [ref=e156] [cursor=pointer]:
+              - img [ref=e157]
+        - generic [ref=e159]:
+          - generic [ref=e161]:
+            - heading "Latest commit" [level=2] [ref=e162]
+            - generic [ref=e165]:
+              - heading "History" [level=2] [ref=e166]
+              - link "View commit history for this file." [ref=e168] [cursor=pointer]:
+                - /url: /android/connectivity-samples/commits/main/NearbyConnectionsWalkieTalkie
+                - generic [ref=e169]:
+                  - generic:
+                    - img
+          - generic [ref=e170]:
+            - generic [ref=e171]:
+              - heading "Folders and files" [level=2] [ref=e172]
+              - table "Folders and files" [ref=e173]:
+                - rowgroup [ref=e174]:
+                  - row "Name Last commit message Last commit date" [ref=e175]:
+                    - columnheader "Name" [ref=e176]
+                    - columnheader "Last commit message" [ref=e177]:
+                      - generic "Last commit message" [ref=e178]
+                    - columnheader "Last commit date" [ref=e179]:
+                      - generic "Last commit date" [ref=e180]
+                - rowgroup [ref=e181]:
+                  - row "parent directory Parent directory" [ref=e182]:
+                    - cell "parent directory Parent directory" [ref=e183]:
+                      - heading "parent directory" [level=3] [ref=e184]
+                      - link "Parent directory" [ref=e185] [cursor=pointer]:
+                        - /url: /android/connectivity-samples/tree/main
+                        - generic [ref=e186]:
+                          - img [ref=e187]
+                          - text: ..
+                  - row ".google, (Directory)" [ref=e189]:
+                    - cell ".google, (Directory)" [ref=e190]:
+                      - generic [ref=e191]:
+                        - img [ref=e192]
+                        - link ".google, (Directory)" [ref=e197] [cursor=pointer]:
+                          - /url: /android/connectivity-samples/tree/main/NearbyConnectionsWalkieTalkie/.google
+                          - text: .google
+                    - cell [ref=e198]
+                    - cell [ref=e200]
+                  - row "app, (Directory)" [ref=e203]:
+                    - cell "app, (Directory)" [ref=e204]:
+                      - generic [ref=e205]:
+                        - img [ref=e206]
+                        - link "app, (Directory)" [ref=e211] [cursor=pointer]:
+                          - /url: /android/connectivity-samples/tree/main/NearbyConnectionsWalkieTalkie/app
+                          - text: app
+                    - cell [ref=e212]
+                    - cell [ref=e214]
+                  - row "gradle/wrapper, (Directory)" [ref=e217]:
+                    - cell "gradle/wrapper, (Directory)" [ref=e218]:
+                      - generic [ref=e219]:
+                        - img [ref=e220]
+                        - link "gradle/wrapper, (Directory)" [ref=e225] [cursor=pointer]:
+                          - /url: /android/connectivity-samples/tree/main/NearbyConnectionsWalkieTalkie/gradle/wrapper
+                          - text: gradle/wrapper
+                    - cell [ref=e226]
+                    - cell [ref=e228]
+                  - row ".gitignore, (File)" [ref=e231]:
+                    - cell ".gitignore, (File)" [ref=e232]:
+                      - generic [ref=e233]:
+                        - img [ref=e234]
+                        - link ".gitignore, (File)" [ref=e239] [cursor=pointer]:
+                          - /url: /android/connectivity-samples/blob/main/NearbyConnectionsWalkieTalkie/.gitignore
+                          - text: .gitignore
+                    - cell [ref=e240]
+                    - cell [ref=e242]
+                  - row "README.md, (File)" [ref=e245]:
+                    - cell "README.md, (File)" [ref=e246]:
+                      - generic [ref=e247]:
+                        - img [ref=e248]
+                        - link "README.md, (File)" [ref=e253] [cursor=pointer]:
+                          - /url: /android/connectivity-samples/blob/main/NearbyConnectionsWalkieTalkie/README.md
+                          - text: README.md
+                    - cell [ref=e254]
+                    - cell [ref=e256]
+                  - row "build.gradle.kts, (File)" [ref=e259]:
+                    - cell "build.gradle.kts, (File)" [ref=e260]:
+                      - generic [ref=e261]:
+                        - img [ref=e262]
+                        - link "build.gradle.kts, (File)" [ref=e267] [cursor=pointer]:
+                          - /url: /android/connectivity-samples/blob/main/NearbyConnectionsWalkieTalkie/build.gradle.kts
+                          - text: build.gradle.kts
+                    - cell [ref=e268]
+                    - cell [ref=e270]
+                  - row "gradle.properties, (File)" [ref=e273]:
+                    - cell "gradle.properties, (File)" [ref=e274]:
+                      - generic [ref=e275]:
+                        - img [ref=e276]
+                        - link "gradle.properties, (File)" [ref=e281] [cursor=pointer]:
+                          - /url: /android/connectivity-samples/blob/main/NearbyConnectionsWalkieTalkie/gradle.properties
+                          - text: gradle.properties
+                    - cell [ref=e282]
+                    - cell [ref=e284]
+                  - row "gradlew, (File)" [ref=e287]:
+                    - cell "gradlew, (File)" [ref=e288]:
+                      - generic [ref=e289]:
+                        - img [ref=e290]
+                        - link "gradlew, (File)" [ref=e295] [cursor=pointer]:
+                          - /url: /android/connectivity-samples/blob/main/NearbyConnectionsWalkieTalkie/gradlew
+                          - text: gradlew
+                    - cell [ref=e296]
+                    - cell [ref=e298]
+                  - row "gradlew.bat, (File)" [ref=e301]:
+                    - cell "gradlew.bat, (File)" [ref=e302]:
+                      - generic [ref=e303]:
+                        - img [ref=e304]
+                        - link "gradlew.bat, (File)" [ref=e309] [cursor=pointer]:
+                          - /url: /android/connectivity-samples/blob/main/NearbyConnectionsWalkieTalkie/gradlew.bat
+                          - text: gradlew.bat
+                    - cell [ref=e310]
+                    - cell [ref=e312]
+                  - row "settings.gradle.kts, (File)" [ref=e315]:
+                    - cell "settings.gradle.kts, (File)" [ref=e316]:
+                      - generic [ref=e317]:
+                        - img [ref=e318]
+                        - link "settings.gradle.kts, (File)" [ref=e323] [cursor=pointer]:
+                          - /url: /android/connectivity-samples/blob/main/NearbyConnectionsWalkieTalkie/settings.gradle.kts
+                          - text: settings.gradle.kts
+                    - cell [ref=e324]
+                    - cell [ref=e326]
+            - generic [ref=e330]:
+              - generic [ref=e331]:
+                - heading "README.md" [level=2] [ref=e332]:
+                  - link "README.md" [ref=e333] [cursor=pointer]:
+                    - /url: "#readme"
+                - button "Outline" [ref=e334] [cursor=pointer]:
+                  - img [ref=e335]
+              - article [ref=e338]:
+                - generic [ref=e339]:
+                  - 'heading "Google APIs for Mobile: Quickstarts" [level=1] [ref=e340]'
+                  - 'link "Permalink: Google APIs for Mobile: Quickstarts" [ref=e341] [cursor=pointer]':
+                    - /url: "#google-apis-for-mobile-quickstarts"
+                    - img [ref=e342]
+                - paragraph [ref=e344]:
+                  - text: Demonstrates streaming audio with the
+                  - link "Nearby.Connections API" [ref=e345] [cursor=pointer]:
+                    - /url: https://developers.google.com/nearby/connections/overview
+                  - text: to other nearby devices.
+                - generic [ref=e346]:
+                  - heading "Getting Started" [level=2] [ref=e347]
+                  - 'link "Permalink: Getting Started" [ref=e348] [cursor=pointer]':
+                    - /url: "#getting-started"
+                    - img [ref=e349]
+                - paragraph [ref=e351]: This sample uses the Gradle build system. To build this project, import the project into Android Studio before running it on (at least) 2 devices. This project comes with 2 build variants, Manual and Automatic, that demonstrate different ways of connecting the two devices. They can be toggled between in the Build Variants tab within Android Studio.
+                - generic [ref=e352]:
+                  - heading "WalkieTalkie Manual" [level=2] [ref=e353]
+                  - 'link "Permalink: WalkieTalkie Manual" [ref=e354] [cursor=pointer]':
+                    - /url: "#walkietalkie-manual"
+                    - img [ref=e355]
+                - paragraph [ref=e357]: In the manual build variant, shake one device to begin advertising. As long as the app is open, other nearby devices should connect to it shortly. To speak, hold down the volume keys and your voice will be transmitted to the other devices you have connected to.
+                - paragraph [ref=e358]: This demonstrates a star network, where one device advertises to a group of devices nearby.
+                - generic [ref=e359]:
+                  - heading "WalkieTalkie Automatic" [level=2] [ref=e360]
+                  - 'link "Permalink: WalkieTalkie Automatic" [ref=e361] [cursor=pointer]':
+                    - /url: "#walkietalkie-automatic"
+                    - img [ref=e362]
+                - paragraph [ref=e364]: In the automatic build variant, devices simultaneously advertise and discover. Devices will begin to pair up as they connect to the first device they see. To speak, hold down the volume keys and your voice will be transmitted to the paired device.
+                - paragraph [ref=e365]: This demonstrates a point to point network, where one device transmits a high bandwidth Payload to one other device.
+                - generic [ref=e366]:
+                  - heading "Support" [level=2] [ref=e367]
+                  - 'link "Permalink: Support" [ref=e368] [cursor=pointer]':
+                    - /url: "#support"
+                    - img [ref=e369]
+                - list [ref=e371]:
+                  - listitem [ref=e372]:
+                    - text: "Stack Overflow:"
+                    - link "http://stackoverflow.com/questions/tagged/google-play-services" [ref=e373] [cursor=pointer]:
+                      - /url: http://stackoverflow.com/questions/tagged/google-play-services
+                - paragraph [ref=e374]:
+                  - text: "If you've found an error in this sample, please file an issue:"
+                  - link "https://github.com/android/connectivity" [ref=e375] [cursor=pointer]:
+                    - /url: https://github.com/android/connectivity
+                - paragraph [ref=e376]: Patches are encouraged, and may be submitted according to the instructions in CONTRIBUTING.md.
+                - generic [ref=e377]:
+                  - heading "How to make contributions?" [level=2] [ref=e378]
+                  - 'link "Permalink: How to make contributions?" [ref=e379] [cursor=pointer]':
+                    - /url: "#how-to-make-contributions"
+                    - img [ref=e380]
+                - paragraph [ref=e382]:
+                  - text: Please read and follow the steps in the
+                  - link "CONTRIBUTING.md" [ref=e383] [cursor=pointer]:
+                    - /url: https://github.com/android/connectivity-samples/blob/main/CONTRIBUTING.md
+  - alert [ref=e387]

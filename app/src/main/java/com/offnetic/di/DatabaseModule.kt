@@ -4,7 +4,6 @@ import android.content.Context
 import androidx.room.Room
 import com.offnetic.data.local.crypto.SQLCipherKeyProvider
 import com.offnetic.data.local.db.OffneticDatabase
-import com.offnetic.data.local.db.dao.BlockedPeerDao
 import com.offnetic.data.local.db.dao.CallHistoryDao
 import com.offnetic.data.local.db.dao.ContactDao
 import com.offnetic.data.local.db.dao.IdentityDao
@@ -66,9 +65,6 @@ object DatabaseModule {
 
     @Provides @Singleton
     fun provideSessionDao(database: OffneticDatabase): SessionDao = database.sessionDao()
-
-    @Provides @Singleton
-    fun provideBlockedPeerDao(database: OffneticDatabase): BlockedPeerDao = database.blockedPeerDao()
 
     @Provides @Singleton
     fun providePreKeyDao(database: OffneticDatabase): PreKeyDao = database.preKeyDao()

@@ -19,17 +19,14 @@ import com.offnetic.ui.call.CallActivity
 import com.offnetic.ui.onboarding.SplashViewModel
 import com.offnetic.ui.chat.ChatListScreen
 import com.offnetic.ui.chat.ChatScreen
-import com.offnetic.ui.contacts.BlockedContactsScreen
 import com.offnetic.ui.contacts.ContactDetailScreen
 import com.offnetic.ui.contacts.MyQrScreen
 import com.offnetic.ui.contacts.QrScannerScreen
-import com.offnetic.ui.nearby.NearbyPeersScreen
 import com.offnetic.ui.onboarding.IdentityGenerationScreen
 import com.offnetic.ui.onboarding.PermissionSlide
 import com.offnetic.ui.onboarding.ProfileSetupScreen
 import com.offnetic.ui.onboarding.SplashScreen
 import com.offnetic.ui.screens.MainScreen
-import com.offnetic.ui.settings.AccountScreen
 import com.offnetic.ui.settings.SettingsScreen
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
@@ -125,21 +122,10 @@ fun OffneticNavHost() {
 
         composable(Routes.MAIN) {
             val context = LocalContext.current
-            val chatListViewModel: com.offnetic.ui.chat.ChatListViewModel = hiltViewModel()
             LaunchedEffect(Unit) {
-                val isBgScanning = chatListViewModel.isScoutMode.value
-                if (isBgScanning) {
-                    context.startForegroundService(Intent(context, NcapForegroundService::class.java))
-                }
+                context.startForegroundService(Intent(context, NcapForegroundService::class.java))
             }
             MainScreen(navController)
-        }
-
-        composable(Routes.NEARBY) {
-            NearbyPeersScreen(
-                onScanQr = { navController.navigate(Routes.QR_SCANNER) },
-                onChatsClick = { navController.popBackStack() }
-            )
         }
 
         composable(Routes.QR_SCANNER) {
@@ -161,12 +147,18 @@ fun OffneticNavHost() {
         }
 
         composable(Routes.CHAT_LIST) {
+            val context = LocalContext.current
+            val activity = context as? android.app.Activity
             ChatListScreen(
                 onChatClick = { contactPublicKey ->
                     navController.navigate(Routes.chatRoute(contactPublicKey))
                 },
                 onScanQr = { navController.navigate(Routes.QR_SCANNER) },
-                onNearbyClick = { navController.popBackStack() }
+                onNearbyClick = { navController.popBackStack() },
+                onShutdown = {
+                    context.stopService(Intent(context, NcapForegroundService::class.java))
+                    activity?.finish()
+                }
             )
         }
 
@@ -179,7 +171,7 @@ fun OffneticNavHost() {
                 onBack = { navController.popBackStack() },
                 onCall = { peerKey ->
                     val intent = Intent(context, CallActivity::class.java).apply {
-                        putExtra("EXTRA_PEER_PUBLIC_KEY", Routes.decodeKey(peerKey))
+                        putExtra("EXTRA_PEER_PUBLIC_KEY", URLEncoder.encode(peerKey, "UTF-8"))
                         putExtra("EXTRA_IS_INCOMING", false)
                     }
                     context.startActivity(intent)
@@ -196,22 +188,8 @@ fun OffneticNavHost() {
             )
         }
 
-        composable(Routes.BLOCKED_CONTACTS) {
-            BlockedContactsScreen(
-                onBack = { navController.popBackStack() }
-            )
-        }
-
         composable(Routes.SETTINGS) {
             SettingsScreen(
-                onBack = { navController.popBackStack() },
-                onAccountClick = { navController.navigate(Routes.ACCOUNT) },
-                onBlockedContactsClick = { navController.navigate(Routes.BLOCKED_CONTACTS) }
-            )
-        }
-
-        composable(Routes.ACCOUNT) {
-            AccountScreen(
                 onBack = { navController.popBackStack() }
             )
         }

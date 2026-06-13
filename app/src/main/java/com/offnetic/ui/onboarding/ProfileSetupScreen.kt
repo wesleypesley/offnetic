@@ -1,22 +1,14 @@
 package com.offnetic.ui.onboarding
 
-import android.net.Uri
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -29,16 +21,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.offnetic.ui.theme.FontFamilySyne
 import androidx.hilt.navigation.compose.hiltViewModel
+
+private val USERNAME_REGEX = Regex("^[a-zA-Z0-9_]{2,24}$")
 
 @Composable
 fun ProfileSetupScreen(
@@ -46,14 +37,13 @@ fun ProfileSetupScreen(
 ) {
     var username by remember { mutableStateOf("") }
     var visible by remember { mutableStateOf(false) }
-    var avatarUri by remember { mutableStateOf<Uri?>(null) }
     val viewModel: ProfileSetupViewModel = hiltViewModel()
 
-    val avatarPicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri -> avatarUri = uri }
-
-    val canProceed = username.trim().length >= 2
+    val trimmed = username.trim()
+    val isValid = trimmed.matches(USERNAME_REGEX)
+    val hasContent = trimmed.length >= 2
+    val showError = hasContent && !isValid
+    val canProceed = isValid
 
     LaunchedEffect(Unit) {
         kotlinx.coroutines.delay(60)
@@ -98,7 +88,7 @@ fun ProfileSetupScreen(
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = "Your name and photo are only visible to trusted contacts you've paired with.",
+                text = "Your name is only visible to trusted contacts you\u2019ve paired with.",
                 fontFamily = FontFamilySyne,
                 fontWeight = FontWeight.Normal,
                 fontSize = 15.sp,
@@ -107,40 +97,6 @@ fun ProfileSetupScreen(
             )
 
             Spacer(modifier = Modifier.height(40.dp))
-
-            Row(
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(80.dp)
-                        .clip(RoundedCornerShape(26.dp))
-                        .background(Color(0xFF1E1E1E))
-                        .border(1.dp, Color(0x1AFFFFFF), RoundedCornerShape(26.dp))
-                        .clickable { avatarPicker.launch("image/*") },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = username.take(2).uppercase().ifEmpty { "?" },
-                        fontFamily = FontFamilySyne,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 24.sp,
-                        color = Color(0x99FFFFFF)
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(20.dp))
-
-                Text(
-                    text = "Tap to choose a photo from gallery",
-                    fontFamily = FontFamilySyne,
-                    fontWeight = FontWeight.Medium,
-                    fontSize = 13.sp,
-                    color = Color(0x4DFFFFFF)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(32.dp))
 
             Text(
                 text = "USERNAME",
@@ -163,6 +119,7 @@ fun ProfileSetupScreen(
                         color = Color(0x40FFFFFF)
                     )
                 },
+                isError = showError,
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(14.dp),
@@ -170,8 +127,8 @@ fun ProfileSetupScreen(
                     focusedTextColor = Color.White,
                     unfocusedTextColor = Color.White,
                     cursorColor = Color.White,
-                    focusedBorderColor = Color(0x40FFFFFF),
-                    unfocusedBorderColor = Color(0x1AFFFFFF),
+                    focusedBorderColor = if (showError) Color(0xFFEF4444) else Color(0x40FFFFFF),
+                    unfocusedBorderColor = if (showError) Color(0xFFEF4444) else Color(0x1AFFFFFF),
                     containerColor = Color(0x0DFFFFFF)
                 ),
                 textStyle = androidx.compose.ui.text.TextStyle(
@@ -180,13 +137,33 @@ fun ProfileSetupScreen(
                     fontSize = 16.sp
                 ),
                 supportingText = {
-                    Text(
-                        text = "Letters, numbers, and underscores only",
-                        fontFamily = FontFamilySyne,
-                        fontWeight = FontWeight.Medium,
-                        fontSize = 12.sp,
-                        color = Color(0x33FFFFFF)
-                    )
+                    Column {
+                        if (showError) {
+                            Text(
+                                text = "Only letters, numbers, and underscores",
+                                fontFamily = FontFamilySyne,
+                                fontWeight = FontWeight.Medium,
+                                fontSize = 12.sp,
+                                color = Color(0xFFEF4444)
+                            )
+                        } else {
+                            Text(
+                                text = "Letters, numbers, and underscores only",
+                                fontFamily = FontFamilySyne,
+                                fontWeight = FontWeight.Medium,
+                                fontSize = 12.sp,
+                                color = Color(0x33FFFFFF)
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "\u26A0 This cannot be changed later.",
+                            fontFamily = FontFamilySyne,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 12.sp,
+                            color = Color(0xFFF59E0B)
+                        )
+                    }
                 }
             )
 
@@ -194,7 +171,7 @@ fun ProfileSetupScreen(
 
             Button(
                 onClick = {
-                    viewModel.saveProfile(username.trim(), avatarUri)
+                    viewModel.saveProfile(trimmed)
                     onDone()
                 },
                 enabled = canProceed,

@@ -116,6 +116,8 @@ class CallActivity : ComponentActivity() {
             callViewModel.setCameraEnabled(true)
             pipVisible = true
             pipRenderer.visibility = View.VISIBLE
+            toggleCameraBtn.setColorFilter(0xFFFFFFFF.toInt())
+            flipCameraBtn.visibility = View.VISIBLE
         }
     }
 
@@ -166,12 +168,15 @@ class CallActivity : ComponentActivity() {
             callViewModel.cleanup()
         }
 
+        callViewModel = callViewModelFactory.create(peerPublicKey, webRtcManager)
+
         tracksBound = false
         finished = false
         callActive = false
         cameraEnabled = false
         micMuted = false
         speakerOn = true
+        callViewModel.setSpeakerOn(peerPublicKey)
         swapped = false
         pipVisible = false
         pipRenderer.visibility = View.INVISIBLE
@@ -180,8 +185,6 @@ class CallActivity : ComponentActivity() {
         flipCameraBtn.visibility = View.GONE
         toggleMicBtn.setColorFilter(0xFFFFFFFF.toInt())
         toggleSpeakerBtn.setColorFilter(0xFFFFFFFF.toInt())
-
-        callViewModel = callViewModelFactory.create(peerPublicKey, webRtcManager)
 
         scope.launch {
             val contact = contactDao.getByPublicKey(peerPublicKey)
@@ -230,14 +233,26 @@ class CallActivity : ComponentActivity() {
     private fun updateUI(state: com.offnetic.domain.model.CallState) {
         android.util.Log.e("offCall", "updateUI phase=${state.phase} tracksBound=$tracksBound finished=$finished cameraEnabled=$cameraEnabled pipVisible=$pipVisible")
         when (state.phase) {
-            CallPhase.IDLE -> {}
+            CallPhase.IDLE -> {
+                finishRunnable?.let { fullscreenRenderer.removeCallbacks(it) }
+                finishRunnable = null
+            }
             CallPhase.OUTGOING -> {
+                finishRunnable?.let { fullscreenRenderer.removeCallbacks(it) }
+                finishRunnable = null
+                finished = false
                 statusTv.text = "Calling..."
             }
             CallPhase.CONNECTING -> {
+                finishRunnable?.let { fullscreenRenderer.removeCallbacks(it) }
+                finishRunnable = null
+                finished = false
                 statusTv.text = "Connecting..."
             }
             CallPhase.INCOMING -> {
+                finishRunnable?.let { fullscreenRenderer.removeCallbacks(it) }
+                finishRunnable = null
+                finished = false
                 incomingButtons.visibility = View.VISIBLE
                 controlPanel.visibility = View.GONE
             }
@@ -267,7 +282,9 @@ class CallActivity : ComponentActivity() {
                     cameraEnabled = false
                 }
                 finished = true
-                fullscreenRenderer.postDelayed({ finish() }, 1500L)
+                finishRunnable?.let { fullscreenRenderer.removeCallbacks(it) }
+                finishRunnable = Runnable { finish() }
+                fullscreenRenderer.postDelayed(finishRunnable!!, 1500L)
             }
         }
     }
@@ -288,6 +305,7 @@ class CallActivity : ComponentActivity() {
 
     private var callActive = false
     private var finished = false
+    private var finishRunnable: Runnable? = null
     private var tracksBound = false
     private var callJob: kotlinx.coroutines.Job? = null
 

@@ -1,5 +1,6 @@
 package com.offnetic.ui.screens
 
+import android.app.Activity
 import android.content.Intent
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
@@ -28,7 +29,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -41,21 +41,22 @@ import com.offnetic.ui.call.CallsScreen
 import com.offnetic.ui.chat.ChatListContent
 import com.offnetic.ui.chat.ChatListViewModel
 import com.offnetic.ui.navigation.Routes
-import com.offnetic.ui.settings.SettingsContent
 import com.offnetic.ui.theme.FontFamilySyne
 
 @Composable
 fun MainScreen(navController: NavController) {
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+    val safeTab = selectedTab.coerceIn(0, 1)
     val chatListViewModel: ChatListViewModel = hiltViewModel()
     val context = LocalContext.current
+    val activity = context as? Activity
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         containerColor = Color(0xFF0A0A0A),
         bottomBar = {
             BottomNavBar(
-                selectedTab = selectedTab,
+                selectedTab = safeTab,
                 onTabSelected = { selectedTab = it }
             )
         }
@@ -65,25 +66,18 @@ fun MainScreen(navController: NavController) {
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            when (selectedTab) {
+            when (safeTab) {
                 0 -> ChatListContent(
                     onChatClick = { key -> navController.navigate(Routes.chatRoute(key)) },
                     onScanQr = { navController.navigate(Routes.QR_SCANNER) },
+                    onShutdown = {
+                        context.stopService(Intent(context, NcapForegroundService::class.java))
+                        activity?.finish()
+                    },
                     viewModel = chatListViewModel
                 )
                 1 -> CallsScreen(
                     onCallClick = { key -> navController.navigate(Routes.chatRoute(key)) }
-                )
-                2 -> SettingsContent(
-                    onAccountClick = { navController.navigate(Routes.ACCOUNT) },
-                    onBlockedContactsClick = { navController.navigate(Routes.BLOCKED_CONTACTS) },
-                    onScoutModeToggle = { enabled ->
-                        if (enabled) {
-                            context.startForegroundService(Intent(context, NcapForegroundService::class.java))
-                        } else {
-                            context.stopService(Intent(context, NcapForegroundService::class.java))
-                        }
-                    }
                 )
             }
         }
@@ -109,7 +103,6 @@ private fun BottomNavBar(
         ) {
             NavTab(label = "Chats", isActive = selectedTab == 0, onClick = { onTabSelected(0) })
             NavTab(label = "Calls", isActive = selectedTab == 1, onClick = { onTabSelected(1) })
-            NavTab(label = "Settings", isActive = selectedTab == 2, onClick = { onTabSelected(2) })
         }
     }
 }
@@ -131,10 +124,10 @@ private fun NavTab(
             val ch = size.height
             when (label) {
                 "Chats" -> {
-                    val left = cw * 0.1f
-                    val top = cw * 0.08f
-                    val right = cw * 0.9f
-                    val bottom = ch * 0.85f
+                    val left = cw * 0.08f
+                    val top = cw * 0.06f
+                    val right = cw * 0.88f
+                    val bottom = ch * 0.74f
                     drawRoundRect(
                         color = iconColor,
                         topLeft = Offset(left, top),
@@ -142,37 +135,47 @@ private fun NavTab(
                         cornerRadius = CornerRadius(cw * 0.1f, cw * 0.1f),
                         style = Stroke(width = 1.5f)
                     )
-                    val tailX = left + (right - left) * 0.5f
+                    val tailX = left + cw * 0.28f
                     drawLine(
                         color = iconColor,
-                        start = Offset(tailX - cw * 0.08f, bottom),
-                        end = Offset(tailX, ch * 0.97f),
+                        start = Offset(tailX - cw * 0.06f, bottom),
+                        end = Offset(tailX, ch * 0.95f),
                         strokeWidth = 1.5f
                     )
                     drawLine(
                         color = iconColor,
-                        start = Offset(tailX + cw * 0.08f, bottom),
-                        end = Offset(tailX, ch * 0.97f),
+                        start = Offset(tailX + cw * 0.06f, bottom),
+                        end = Offset(tailX, ch * 0.95f),
                         strokeWidth = 1.5f
                     )
+                    val lineY1 = top + cw * 0.26f
+                    val lineY2 = top + cw * 0.46f
+                    val lineLeft = left + cw * 0.22f
+                    val lineRight = right - cw * 0.22f
+                    drawLine(iconColor, Offset(lineLeft, lineY1), Offset(lineRight, lineY1), 1.3f)
+                    drawLine(iconColor, Offset(lineLeft, lineY2), Offset(lineRight * 0.92f, lineY2), 1.3f)
                 }
                 "Calls" -> {
-                    val cx = cw / 2
-                    val r = cw * 0.4f
+                    val cx = cw / 2f
+                    val top = ch * 0.04f
+                    val bottom = ch * 0.88f
+                    val r = cw * 0.38f
+                    val handleTop = ch * 0.28f
+                    val handleBottom = ch * 0.78f
                     val path = Path().apply {
-                        moveTo(cx, ch * 0.05f)
-                        cubicTo(cx - r, ch * 0.15f, cx - r, ch * 0.6f, cx, ch * 0.9f)
-                        cubicTo(cx + r, ch * 0.6f, cx + r, ch * 0.15f, cx, ch * 0.05f)
+                        moveTo(cx - cw * 0.30f, top)
+                        cubicTo(cx - r, ch * 0.15f, cx - r, ch * 0.50f, cx - cw * 0.12f, bottom)
+                        cubicTo(cx, bottom, cx, handleBottom, cx, handleBottom)
+                    }
+                    val pathRight = Path().apply {
+                        moveTo(cx + cw * 0.30f, top)
+                        cubicTo(cx + r, ch * 0.15f, cx + r, ch * 0.50f, cx + cw * 0.12f, bottom)
+                        cubicTo(cx, bottom, cx, handleBottom, cx, handleBottom)
                     }
                     drawPath(path, color = iconColor, style = Stroke(width = 1.5f))
-                    drawLine(color = iconColor, start = Offset(cx, ch * 0.25f), end = Offset(cx, ch * 0.75f), strokeWidth = 1.5f)
-                }
-                "Settings" -> {
-                    val cx = cw / 2
-                    val cy = ch / 2
-                    drawCircle(color = iconColor, radius = cw * 0.12f, center = Offset(cx, cy), style = Stroke(width = 1.5f))
-                    drawCircle(color = iconColor, radius = cw * 0.3f, center = Offset(cx, cy),
-                        style = Stroke(width = 1.5f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(cw * 0.18f, cw * 0.18f), 0f)))
+                    drawPath(pathRight, color = iconColor, style = Stroke(width = 1.5f))
+                    drawLine(iconColor, Offset(cx, handleTop), Offset(cx, handleBottom), 1.5f)
+                    drawLine(iconColor, Offset(cx - cw * 0.12f, handleTop), Offset(cx + cw * 0.12f, handleTop), 1.5f)
                 }
             }
         }

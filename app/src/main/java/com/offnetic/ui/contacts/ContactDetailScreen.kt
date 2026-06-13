@@ -50,7 +50,6 @@ fun ContactDetailScreen(
     viewModel: ContactDetailViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    var showBlockDialog by remember { mutableStateOf(false) }
     var showHardDeleteDialog by remember { mutableStateOf(false) }
     var showSoftDeleteDialog by remember { mutableStateOf(false) }
 
@@ -156,7 +155,6 @@ fun ContactDetailScreen(
             DetailRow("Added", formatTimestamp(contact.addedAt))
             DetailRow("Last Seen", formatTimestamp(contact.lastSeenAt))
             DetailRow("Verified", if (contact.isVerified) "Yes" else "No")
-            DetailRow("Status", if (uiState.isBlocked) "Blocked" else "Active")
 
             Spacer(modifier = Modifier.height(32.dp))
 
@@ -173,40 +171,6 @@ fun ContactDetailScreen(
                         .background(Color(0xFF0A0A0A))
                 )
             }
-
-            if (uiState.isBlocked) {
-                Button(
-                    onClick = { viewModel.unblockContact() },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color.White,
-                        contentColor = Color(0xFF0A0A0A)
-                    )
-                ) {
-                    Text("Unblock", fontFamily = FontFamilySyne, fontWeight = FontWeight.SemiBold)
-                }
-            } else {
-                OutlinedButton(
-                    onClick = { showBlockDialog = true },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = Color(0xFFEF4444)
-                    ),
-                    border = ButtonDefaults.outlinedButtonBorder.copy(
-                        brush = androidx.compose.ui.graphics.SolidColor(Color(0x24FFFFFF))
-                    )
-                ) {
-                    Text("Block This Contact", fontFamily = FontFamilySyne, fontWeight = FontWeight.SemiBold)
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
 
             OutlinedButton(
                 onClick = { showSoftDeleteDialog = true },
@@ -244,20 +208,6 @@ fun ContactDetailScreen(
 
             Spacer(modifier = Modifier.navigationBarsPadding().height(48.dp))
         }
-    }
-
-    if (showBlockDialog) {
-        ConfirmDialog(
-            title = "Block Contact",
-            message = "Blocking will wipe the encryption session and stop all communication. This contact will need a new QR scan to reconnect.",
-            confirmText = "Block",
-            confirmColor = Color(0xFFEF4444),
-            onConfirm = {
-                showBlockDialog = false
-                viewModel.blockContact()
-            },
-            onDismiss = { showBlockDialog = false }
-        )
     }
 
     if (showSoftDeleteDialog) {

@@ -5,21 +5,24 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.bluetooth.BluetoothAdapter
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.os.Build
 import android.os.IBinder
 import com.offnetic.MainActivity
 import com.offnetic.R
 import com.offnetic.data.crypto.SignalProtocolManager
 import com.offnetic.data.local.db.dao.IdentityDao
-import com.offnetic.data.local.datastore.PreferencesRepository
 import com.offnetic.data.nearby.NcapManager
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import timber.log.Timber
 import javax.inject.Inject
@@ -30,38 +33,67 @@ class NcapForegroundService : Service() {
     @Inject lateinit var ncapManager: NcapManager
     @Inject lateinit var identityDao: IdentityDao
     @Inject lateinit var signalProtocolManager: SignalProtocolManager
-    @Inject lateinit var prefs: PreferencesRepository
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var isNcapActive = false
+    private var bluetoothPaused = false
+    private var restartJob: kotlinx.coroutines.Job? = null
+    private lateinit var pendingIntent: PendingIntent
 
     companion object {
         const val CHANNEL_ID = "offnetic_ncap_channel"
         const val NOTIFICATION_ID = 1001
     }
 
+    private val bluetoothReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            when (intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR)) {
+                BluetoothAdapter.STATE_OFF -> {
+                    Timber.d("Bluetooth turned off — pausing NCAPI")
+                    bluetoothPaused = true
+                    restartJob?.cancel()
+                    restartJob = null
+                    updateNotification("Bluetooth off \u2014 Offnetic paused")
+                }
+                BluetoothAdapter.STATE_ON -> {
+                    Timber.d("Bluetooth turned on — restarting NCAPI")
+                    restartJob?.cancel()
+                    restartJob = serviceScope.launch(Dispatchers.IO) {
+                        delay(2000L)
+                        try {
+                            val identity = identityDao.getIdentity()
+                            if (identity != null) {
+                                ncapManager.forceRestart(identity.publicKey)
+                                isNcapActive = true
+                                bluetoothPaused = false
+                                serviceScope.launch(Dispatchers.Main) {
+                                    updateNotification("Listening for contacts")
+                                }
+                                Timber.d("NCAPI restarted after Bluetooth recovery")
+                            }
+                        } catch (e: Exception) {
+                            Timber.e(e, "Failed to restart NCAPI after Bluetooth recovery")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-    }
-
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val pendingIntent = PendingIntent.getActivity(
+        pendingIntent = PendingIntent.getActivity(
             this, 0,
             Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+        registerReceiver(bluetoothReceiver, IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED))
+    }
 
-        val notification = Notification.Builder(this, CHANNEL_ID)
-            .setContentTitle("Scout Mode active")
-            .setContentText("Listening for calls, messages, and nearby trusted contacts")
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setContentIntent(pendingIntent)
-            .setOngoing(true)
-            .setPriority(Notification.PRIORITY_LOW)
-            .build()
-
-        startForeground(NOTIFICATION_ID, notification)
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        updateNotification("Listening for contacts")
+        startForeground(NOTIFICATION_ID, buildNotification("Listening for contacts"))
 
         if (!isNcapActive) {
             startNcap()
@@ -71,8 +103,10 @@ class NcapForegroundService : Service() {
     }
 
     override fun onDestroy() {
+        unregisterReceiver(bluetoothReceiver)
         ncapManager.stopAll()
         isNcapActive = false
+        bluetoothPaused = false
         serviceScope.cancel()
         super.onDestroy()
     }
@@ -86,22 +120,33 @@ class NcapForegroundService : Service() {
                 signalProtocolManager.ensurePreKeys()
                 val identity = identityDao.getIdentity()
 
-                val isDiscoverable = prefs.isDiscoverable.firstOrNull() ?: true
-                val isBgScanning = prefs.isBackgroundScanningEnabled.firstOrNull() ?: true
-
-                if (identity != null && isDiscoverable) {
+                if (identity != null) {
                     ncapManager.startAdvertising(identity.publicKey)
                 }
-                if (isBgScanning) {
-                    ncapManager.startDiscovery()
-                }
+                ncapManager.startDiscovery()
                 isNcapActive = true
-                Timber.d("NCAPI started — advertise=$isDiscoverable, discover=$isBgScanning")
+                Timber.d("NCAPI started")
             } catch (e: Exception) {
                 Timber.e(e, "Failed to start NCAPI: ${e.message}")
                 android.util.Log.e("NcapService", "NCAPI start failed", e)
             }
         }
+    }
+
+    private fun buildNotification(text: String): Notification {
+        return Notification.Builder(this, CHANNEL_ID)
+            .setContentTitle("Offnetic")
+            .setContentText(text)
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setContentIntent(pendingIntent)
+            .setOngoing(true)
+            .setPriority(Notification.PRIORITY_LOW)
+            .build()
+    }
+
+    private fun updateNotification(text: String) {
+        val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        manager.notify(NOTIFICATION_ID, buildNotification(text))
     }
 
     private fun createNotificationChannel() {

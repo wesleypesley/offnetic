@@ -39,9 +39,10 @@ class QrScannerViewModel @Inject constructor(
         _state.value = _state.value.copy(isProcessing = true)
         viewModelScope.launch {
             try {
-                val displayName = data.displayName ?: data.publicKey.take(12)
+                val key = data.publicKey
+                val displayName = data.displayName ?: key.take(12)
                 val contact = Contact(
-                    publicKey = data.publicKey,
+                    publicKey = key,
                     displayName = displayName,
                     isVerified = true,
                     addedAt = System.currentTimeMillis()
@@ -51,8 +52,8 @@ class QrScannerViewModel @Inject constructor(
                 val myIdentity = identityDao.getIdentity()
                 val myPublicKey = myIdentity?.publicKey ?: "local"
                 val systemMsg = Message(
-                    sessionId = data.publicKey,
-                    chatId = data.publicKey,
+                    sessionId = key,
+                    chatId = key,
                     senderPublicKey = myPublicKey,
                     content = "Chat established via QR pairing",
                     type = Message.TYPE_SYSTEM,
@@ -62,7 +63,7 @@ class QrScannerViewModel @Inject constructor(
                 )
                 messageDao.insert(systemMsg)
 
-                ncapManager.startDiscovery()
+                ncapManager.reconnectToContact(key)
 
                 _state.value = _state.value.copy(scannedData = data, isProcessing = false)
             } catch (e: Exception) {

@@ -3,6 +3,7 @@ package com.offnetic.di
 import android.content.Context
 import com.offnetic.data.nearby.NcapManager
 import com.offnetic.data.nearby.WebRtcManager
+import com.offnetic.data.nearby.WifiP2pHandler
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -18,8 +19,9 @@ object WebRtcModule {
     @Singleton
     fun provideWebRtcManager(
         @ApplicationContext context: Context,
-        ncapManager: NcapManager
+        ncapManager: NcapManager,
+        wifiP2pHandler: WifiP2pHandler
     ): WebRtcManager {
-        return WebRtcManager(context, ncapManager)
+        return WebRtcManager(context, ncapManager, wifiP2pHandler)
     }
 }

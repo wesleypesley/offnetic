@@ -4,7 +4,6 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.offnetic.data.crypto.NcapEnvelope
-import com.offnetic.data.local.db.dao.BlockedPeerDao
 import com.offnetic.data.local.db.dao.ContactDao
 import com.offnetic.data.local.db.dao.MessageDao
 import com.offnetic.data.local.db.dao.PreKeyDao
@@ -21,7 +20,6 @@ import javax.inject.Inject
 
 data class ContactDetailUiState(
     val contact: Contact? = null,
-    val isBlocked: Boolean = false,
     val isLoading: Boolean = true,
     val actionMessage: String? = null
 )
@@ -30,7 +28,6 @@ data class ContactDetailUiState(
 class ContactDetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val contactDao: ContactDao,
-    private val blockedPeerDao: BlockedPeerDao,
     private val messageDao: MessageDao,
     private val sessionDao: SessionDao,
     private val preKeyDao: PreKeyDao,
@@ -49,41 +46,10 @@ class ContactDetailViewModel @Inject constructor(
     private fun loadContact() {
         viewModelScope.launch {
             val contact = contactDao.getByPublicKey(publicKey)
-            val isBlocked = blockedPeerDao.isBlocked(publicKey)
             _uiState.value = ContactDetailUiState(
                 contact = contact?.let { Contact.fromEntity(it) },
-                isBlocked = isBlocked,
                 isLoading = false
             )
-        }
-    }
-
-    fun blockContact() {
-        viewModelScope.launch {
-            val contact = contactDao.getByPublicKey(publicKey) ?: return@launch
-
-            ncapManager.peers.value
-                .filter { it.publicKey == publicKey && it.connectionState == com.offnetic.domain.model.ConnectionState.CONNECTED }
-                .forEach { ncapManager.disconnectFromEndpoint(it.endpointId) }
-
-            sessionDao.deleteByRemotePublicKey(publicKey)
-            preKeyDao.delete(publicKey)
-
-            val blockedPeer = com.offnetic.data.local.db.entity.BlockedPeer(
-                blockedPublicKey = publicKey,
-                blockedAt = System.currentTimeMillis(),
-                displayNameSnapshot = contact.displayName
-            )
-            blockedPeerDao.insert(blockedPeer)
-
-            _uiState.value = _uiState.value.copy(isBlocked = true, actionMessage = "Contact blocked")
-        }
-    }
-
-    fun unblockContact() {
-        viewModelScope.launch {
-            blockedPeerDao.unblock(publicKey)
-            _uiState.value = _uiState.value.copy(isBlocked = false, actionMessage = "Contact unblocked. Re-add via QR scan to restore session.")
         }
     }
 

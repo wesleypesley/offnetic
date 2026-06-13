@@ -5,7 +5,6 @@ data class PeerInfo(
     val publicKey: String,
     val displayName: String,
     val isContact: Boolean,
-    val isBlocked: Boolean,
     val connectionState: ConnectionState,
     val lastSeenAt: Long,
     val lastPingedAt: Long
