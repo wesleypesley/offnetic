@@ -33,5 +33,6 @@ data class Message(
         const val TYPE_IMAGE = 3
         const val TYPE_VIDEO = 4
         const val TYPE_SYSTEM = 5
+        const val TYPE_CANCELLED = 6
     }
 }

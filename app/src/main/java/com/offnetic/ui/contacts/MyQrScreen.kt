@@ -34,6 +34,7 @@ import com.google.zxing.BarcodeFormat
 import com.google.zxing.WriterException
 import com.google.zxing.qrcode.QRCodeWriter
 import com.offnetic.ui.theme.FontFamilySyne
+import com.offnetic.ui.theme.Spacing
 
 @Composable
 fun MyQrScreen(
@@ -57,7 +58,7 @@ fun MyQrScreen(
                 onClick = onBack,
                 modifier = Modifier
                     .align(Alignment.Start)
-                    .padding(top = 48.dp, start = 8.dp)
+                    .padding(top = Spacing.xxxl, start = Spacing.sm)
             ) {
                 Text("✕", fontFamily = FontFamilySyne, fontWeight = FontWeight.Bold, fontSize = 20.sp, color = Color.White)
             }
@@ -69,7 +70,7 @@ fun MyQrScreen(
                     .size(240.dp)
                     .clip(RoundedCornerShape(24.dp))
                     .background(Color.White)
-                    .padding(16.dp),
+                    .padding(Spacing.lg),
                 contentAlignment = Alignment.Center
             ) {
                 if (qrPayload != null) {
@@ -85,7 +86,7 @@ fun MyQrScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(Spacing.xl))
 
             Text(
                 text = "Your QR Code",
@@ -94,7 +95,7 @@ fun MyQrScreen(
                 fontSize = 20.sp,
                 color = Color.White
             )
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(Spacing.sm))
             Text(
                 text = "Have trusted contacts scan this to establish an encrypted session.",
                 fontFamily = FontFamilySyne,
@@ -102,10 +103,10 @@ fun MyQrScreen(
                 fontSize = 14.sp,
                 color = Color(0x73FFFFFF),
                 textAlign = TextAlign.Center,
-                modifier = Modifier.padding(horizontal = 48.dp)
+                modifier = Modifier.padding(horizontal = Spacing.xxxl)
             )
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(Spacing.xl))
             Text(
                 text = "ID: ${displayName}...",
                 fontFamily = FontFamilySyne,
@@ -117,7 +118,7 @@ fun MyQrScreen(
             )
 
             Spacer(modifier = Modifier.weight(0.3f))
-            Spacer(modifier = Modifier.height(48.dp))
+            Spacer(modifier = Modifier.height(Spacing.xxxl))
         }
     }
 }

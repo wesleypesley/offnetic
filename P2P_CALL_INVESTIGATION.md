@@ -1,122 +1,145 @@
-# Wi-Fi Direct Peer-to-Peer Call — Investigation Report
+# P2P Call Investigation: Offline Voice/Video Calls
 
-## Objective
-Enable WebRTC voice/video calls between two Android devices connected **only** via Wi-Fi Direct (no router, no internet, Wi-Fi enabled but not connected to any AP).
+> Tested on: Samsung SM-A226B (Android 13, API 33) ↔ OnePlus CPH2691IN (Android 16, API 36)
 
-## Devices Under Test
-- **Samsung SM-A226B** (Android 14, One UI)
-- **OnePlus CPH2691** (Android 14, ColorOS/OxygenOS)
-- Wi-Fi ON, Bluetooth ON, Location ON, no router connected
+## Goal
 
-## Baseline
-- **Same-Wi-Fi calls work.** SDP exchange over NCAPI/Bluetooth, ICE discovers LAN host candidates on the Wi-Fi interface (e.g. 192.168.1.x), WebRTC connects.
-- **Cross-router calls work** (OnePlus on Router1, Samsung on Router2). ICE connectivity checks find a route through the routers.
-- **Pure Wi-Fi Direct fails.** Both devices on Wi-Fi only, no router. ICE gathers LAN host candidates (e.g. 0.0.0.0 or loopback) that cannot reach each other. No network route exists between the devices without a shared subnet.
-
-## The Core Problem
-WebRTC needs **UDP/IP connectivity** between peers for media. When both devices have no router, the only way to get IP connectivity is Wi-Fi Direct. Wi-Fi Direct creates a P2P subnet (192.168.49.x). Both devices must be in the **same** P2P group to share this subnet.
-
-Google Nearby Connections API (NCAPI) with `P2P_CLUSTER` strategy provides the **control plane** over BLE (message passing for SDP, ICE candidates, signaling). But NCAPI does **not** expose a raw IP route for WebRTC media. NCAPI may internally use Wi-Fi Direct for large payload transfers (files), but our WebRTC packets are not NCAPI payloads — they are raw UDP.
-
-## Approaches Tried
+Enable peer-to-peer voice/video calls over Wi-Fi Direct so devices can call each other offline (no internet, no shared Wi-Fi router). WebRTC requires IP-level connectivity between devices for ICE negotiation and media transport. NCAPI provides Bluetooth-only transport for control plane — no IP layer for media.
 
 ---
 
-### Attempt 1: Manual P2P Group + MAC Exchange over NCAPI
-**Concept:** Caller creates an autonomous P2P group (`WifiP2pManager.createGroup()`), sends its MAC address to the callee via NCAPI, callee calls `WifiP2pManager.connect()` with that MAC to join the group.
+## Method 1: NCAPI `Payload.Type.STREAM` (WalkieTalkie Model)
 
-**What happened:**
-- `createGroup()` **succeeded** on both devices → each became Group Owner (GO) with IP `192.168.49.1`
-- **MAC acquisition failed.** On Android 10+, `NetworkInterface.getHardwareAddress()` returns `02:00:00:00:00:00` for all interfaces (MAC randomization/privacy). `WifiP2pManager.requestGroupInfo().owner.deviceAddress` callback never fires reliably after group creation.
-- Result: P2P info payload was never sent to the callee (MAC was null/zero).
+**Status:** ❌ Not implemented
 
-**Files changed:** `WifiP2pHandler.kt` — added `getP2pInterfaceMac()`, `getDeviceAddressWithRetry()` with 6 retry attempts with 1s delays.
+**How it works:** Google's NearbyConnectionsWalkieTalkie sample sends raw PCM audio over `Payload.Type.STREAM`. No WebRTC, no video codecs, no echo cancellation. Just raw PCM bytes over a Unix pipe → NCAPI stream.
 
----
+**Why not for us:** We need video calls and WebRTC's codec/echo-cancellation stack. NCAPI Stream can't carry WebRTC's ICE/DTLS/SRTP — it's a byte pipe, not a socket. Could work for audio-only if we drop WebRTC and use Android's AudioRecord/AudioTrack directly.
 
-### Attempt 2: P2P Discovery to Bypass MAC Exchange
-**Concept:** Instead of sending MAC over NCAPI, have the callee use `WifiP2pManager.discoverPeers()` to find the caller's P2P group autonomously. Discovery returns the MAC via the Wi-Fi Direct protocol (not Android API level), bypassing the MAC privacy restrictions.
-
-**What happened:**
-- `discoverPeers()` **succeeded** on the callee
-- `requestPeers()` returned the correct MAC (e.g. `ea:6a:3d:2d:9a:ff` for OnePlus, `7e:c2:25:f0:d0:a6` for Samsung)
-- Pioneer discovery was verified: "P2P peers changed — discovery complete" fired, "requestPeers returned 1 peers" confirmed
-- **`WifiP2pManager.connect()` NEVER fired its callback.** Neither `onSuccess()` nor `onFailure()` was called. The `WIFI_P2P_CONNECTION_CHANGED_ACTION` broadcast with `isConnected=true` never arrived. The call timed out after 10 seconds every time.
-
-**Root cause:**
-`WifiP2pManager.connect()` is a **known broken API** on Samsung One UI and OnePlus ColorOS/OxygenOS. The call is accepted by the framework (no exception thrown) but silently fails — no callback, no broadcast, no connection. This is documented across the Android issue tracker and StackOverflow.
-
-**Files changed:** `WifiP2pHandler.kt` — added `discoverAndConnect()`, `discoverPeers` + `requestPeers`, `stopPeerDiscovery` before connect, PEERS_CHANGED broadcast receiver.
+**Reference:** `NearbyConnectionsWalkieTalkie` (Google connectivity-samples)
 
 ---
 
-### Attempt 3: Simultaneous Call Race Condition
-**Observation:** Both devices were creating P2P groups simultaneously (each initiating a call). Both became GO of their own autonomous groups. Both received each other's `group_created` payloads, both tried to discover and connect. Two autonomous groups cannot connect to each other.
+## Method 2: Manual `WifiP2pManager` API
 
-**Fix:** Removed `wifiP2pHandler.teardown()` from `cleanupPeerConnection()` — was killing the P2P job when a second call arrived. Only `hangup()` and `onCallHangup()` now call teardown. Stale PC cleanup in `onSdpReceived` now only removes from `peerConnections` without triggering teardown.
+**Status:** ⚠️ `createGroup()` works, `connect()` fails
 
-**Files changed:** `WebRtcManager.kt` — moved `teardown()` out of `cleanupPeerConnection()` to explicit `hangup()` / `onCallHangup()`. `CallViewModel.kt` — clear stale CallState errors.
+### What we tested:
 
----
+| API Call | Samsung | OnePlus | Result |
+|---|---|---|---|
+| `createGroup()` | SUCCESS | SUCCESS | Creates autonomous GO, device gets `192.168.49.1/24` |
+| `discoverPeers()` | SUCCESS | SUCCESS | Finds peer's P2P MAC address |
+| `connect(peerMac)` | FAILED (reason=0=ERROR) | FAILED (reason=0=ERROR) | Never completes |
+| `setDialogListener()` | API removed SDK 35 | API removed SDK 35 | Can't auto-accept invitation |
 
-### Attempt 4: Auto-Group Teardown on Incoming Payload
-**Concept:** When receiving `group_created`, cancel own group to become responder-only.
+### `createGroup()` works when:
+- Wi-Fi is ON (radio enabled)
+- Device is NOT connected to a Wi-Fi network (single-radio MediaTek chipset can't do STA+P2P simultaneously)
 
-**What happened:** Both devices cancelled their groups simultaneously — nobody had a group left to connect to. Both `connect()` calls targeted groups that no longer existed.
+### `connect()` fails because:
+- Android 15 (SDK 35) removed `setDialogListener` — can't auto-accept the Wi-Fi Direct invitation
+- User must manually tap "Accept" on a system dialog
+- Without the dialog being accepted, `connect()` returns `reason=0=ERROR`
 
-**Fix:** Removed the auto-cancel. But this led back to the dual-GO problem.
+### The invitation DOES arrive:
+The Samsung received a Wi-Fi Direct connection request dialog when the OnePlus called `connect()`. The system delivers the request — it just needs user approval.
 
----
-
-### Attempt 5: Replace connect() with createGroup(config) — GO Negotiation
-**Concept:** Instead of `connect()` (broken API), use `WifiP2pManager.createGroup(channel, config)` — the **two-argument** version that does GO negotiation with a peer. The framework handles the entire handshake internally, bypassing the broken `connect()` implementation.
-
-**What happened:**
-- `createGroup(channel, config)` **succeeded** on the OnePlus: logged "negotiate createGroup succeeded" → "Negotiated: GO=true ip=192.168.49.1"
-- **BUT** the OnePlus became **GO of a NEW group**, not a client of the Samsung's existing autonomous group.
-- Autonomous groups (`createGroup()`) and negotiated groups (`createGroup(config)`) are **incompatible**. The Samsung had an autonomous group as GO. The OnePlus tried to negotiate. The autonomous GO didn't participate in the negotiation, so the framework fell back to making the OnePlus a GO of its own group.
-- Two separate P2P groups, two GOs, no connection between devices.
-
-**Key insight:** You cannot mix autonomous and negotiated P2P groups. Both sides must use the same mechanism.
-
-**Files changed:** `WifiP2pHandler.kt` — rewrote to use `createGroup(channel, config)` via `negotiateWithPeer()`, removed `connectToGroup` from the discovery path.
+### Code location:
+`WifiP2pHandler.kt` — fully implemented with `startP2pCall()`, `startAsGroupOwner()`, `connectToGroupOwner()`, discovery retry loop. **Preserved but uncalled** from the WebRTC call path.
 
 ---
 
-### Attempt 6: Pure Negotiated Connection (Current)
-**Concept:** No autonomous groups at all. Both sides run discovery to be discoverable. The initiator discovers the callee's MAC and calls `createGroup(channel, config)` with `groupOwnerIntent=15`. The callee, being in discovery mode, automatically responds to the GO negotiation and becomes a client. No `connect()` API used anywhere.
+## Method 3: Wi-Fi Aware (Neighbor Awareness Networking / NAN)
 
-**What happened:**
-- Discovery on the initiator found **zero peers** (`discovered peer MAC=null`)
-- The callee was not in discovery mode → was not discoverable → initiator couldn't find it
-- Just having Wi-Fi ON is not enough. A device must actively run `discoverPeers()` to be discoverable and visible to other P2P devices.
+**Status:** ❌ Hardware unsupported
 
-**Current state:** The file `WifiP2pHandler.kt` is rewritten to use pure negotiation. The callee side does not yet trigger its own `discoverPeers()`. This is the next step.
+### What we tested:
+- `WifiAwareManager` system service → **null on both devices**
+- `android.hardware.wifi.aware` feature flag → **absent on both devices**
 
-**Files changed:** `WifiP2pHandler.kt` — complete rewrite. Cleaned up all dead code (autonomous group creation, MAC exchange, payload handling). Reduced from 598 to ~250 lines.
+Samsung's MediaTek Dimensity 700 and OnePlus's chipset don't implement the NAN protocol in hardware. Wi-Fi Aware is unavailable on these devices.
+
+### Code location:
+`WifiAwareHandler.kt` — **deleted** (not applicable to this hardware)
 
 ---
 
-## Summary of Blockers
+## Method 4: Local-Only Hotspot
 
-| # | Blocker | API | Status |
-|---|---------|-----|--------|
-| 1 | MAC address acquisition | `NetworkInterface.getHardwareAddress()` | **Blocked by Android 10+ privacy** — always returns `02:00:00:00:00:00` |
-| 2 | MAC via group info | `requestGroupInfo().owner.deviceAddress` | **Callback unreliable** — doesn't fire on these devices |
-| 3 | MAC via discovery | `discoverPeers()` + `requestPeers()` | **WORKS** ✅ — returns real MAC |
-| 4 | Connect to group | `WifiP2pManager.connect()` | **BROKEN** — callback never fires on Samsung/OnePlus |
-| 5 | Autonomous + negotiated mix | `createGroup()` + `createGroup(config)` | **INCOMPATIBLE** — cannot mix group types |
-| 6 | GO negotiation | `createGroup(channel, config)` | **WORKS** on OnePlus ✅ — creates group, fires broadcast |
-| 7 | Callee discoverability | Device must run `discoverPeers()` to be found | **MISSING** — callee not triggering discovery |
+**Status:** ⚠️ Hotspot starts, client can't connect silently
 
-## Remaining Solution Path
+### What we tested:
 
-1. **Both sides must run `discoverPeers()`.** This makes both devices discoverable AND scanning.
-2. **Only one side negotiates.** Use the deterministic initiator rule (lower public key) — that device calls `createGroup(channel, config)` with `groupOwnerIntent=15`.
-3. **The callee just stays in discovery mode.** No `connect()`, no `createGroup()`. The framework handles the negotiation automatically when the initiator's `createGroup(config)` fires.
-4. **Need to bridge the timing gap.** The callee should start discovery when it receives the CALL_OFFER (in `acceptIncomingCall`), not wait until the user accepts. This ensures both sides are in discovery mode simultaneously.
+| Step | Result |
+|---|---|
+| `startLocalOnlyHotspot()` | SUCCESS on both devices. Hidden hotspot created, SSID + password returned. |
+| `WifiNetworkSuggestion` (client) | `STATUS_NETWORK_SUGGESTIONS_SUCCESS` but **doesn't connect**. Shows notification/popup. |
+| `waitForConnection()` (client) | Times out after 20s. Device never joins the hotspot network. |
 
-## Files Significantly Modified
-- `WifiP2pHandler.kt` — rewritten 3 times, ended at ~250 lines (was ~600). Removed autonomous group creation, MAC exchange, all P2P payload handling. Added discovery, GO negotiation, clean retry logic.
-- `WebRtcManager.kt` — removed broken `injectWifiDirectCandidate()`, changed `disableNetworkMonitor` to `false`, removed `startP2pCall` in some iterations, moved `teardown()` out of `cleanupPeerConnection()`, stale PC cleanup in `onSdpReceived`.
-- `CallViewModel.kt` — stale error clearing in `startOutgoingCall`, `acceptIncomingCall`, `acceptCall`.
+### Why it fails:
+Android 10+ blocks silent Wi-Fi connections as a security measure. Samsung OneUI requires explicit user approval via notification or dialog. No API exists to bypass this — even Google's own apps rely on system-level Play Services for this.
+
+### Code location:
+`LocalHotspotHandler.kt` — **deleted**
+
+---
+
+## Method 5: Manual Wi-Fi Direct Group (via System Settings)
+
+**Status:** ✅ WORKS
+
+### How it works:
+1. User creates a Wi-Fi Direct group manually via Android Settings → Wi-Fi → Wi-Fi Direct
+2. Both devices get IPs on `192.168.49.0/24` subnet (`ip addr show p2p0`)
+3. Ping between devices works (<100ms)
+4. WebRTC with `disableNetworkMonitor = true` discovers the `p2p0` interface
+5. ICE generates host candidates with `192.168.49.x` addresses
+6. ICE negotiation completes → CONNECTED
+7. Both audio and video work over the P2P link
+
+### Required app configuration:
+- `disableNetworkMonitor = true` in `PeerConnectionFactory.Options` (enables WebRTC to scan ALL interfaces via `NetworkInterface.getNetworkInterfaces()`, not just those reported by Android's ConnectivityManager)
+- `networkIgnoreMask = 0` (don't ignore any network types)
+- `setFieldTrials("WebRTC-IncludeWifiDirect/Enabled/")` (WebRTC field trial for P2P interface visibility)
+
+### Limitations:
+- User must manually create the group before calling (one-time per session)
+- Calls work offline once the group exists
+- File transfers use NCAPI's built-in transport (no manual setup needed)
+
+---
+
+## Method 6: Same Wi-Fi Network
+
+**Status:** ✅ WORKS
+
+When both devices are connected to the same Wi-Fi router, NCAPI uses LAN transport. Devices get routable IPs. WebRTC discovers them via standard ICE host candidates. Calls work without any additional setup.
+
+---
+
+## Key Supporting Fixes
+
+These bugs were found and fixed during P2P call investigation:
+
+| # | Issue | Fix |
+|---|---|---|
+| StateFlow reuse | `getCallState()` returns stale ENDED flow from previous call → kills new call instantly | `getCallState` resets ENDED to IDLE before returning |
+| Double postDelayed | Stale ENDED's `postDelayed(finish, 1500)` fires after new ENDED sets `finished=true` → finish() called twice | `finishRunnable` tracking — cancel old runnable on state transitions |
+| IceCandidate logging | Candidate IPs not visible in logs → can't debug P2P path | Full SDP string logged in `onIceCandidate` |
+| P2P candidate injection | Fallback for devices where `disableNetworkMonitor` still doesn't discover p2p0 | `injectP2pCandidate()` reads p2p0 IP from NetworkInterface, builds synthetic host candidate, sends to peer |
+
+---
+
+## Conclusion
+
+| Method | Auto? | Video? | Works? |
+|---|---|---|---|
+| NCAPI Stream (WalkieTalkie) | Yes | No | Not tested |
+| Manual `WifiP2pManager` API | No (dialog) | Yes | Dialog blocks |
+| Wi-Fi Aware (NAN) | Yes | Yes | Hardware ❌ |
+| Local-Only Hotspot | No (notification) | Yes | Client connection ❌ |
+| Manual P2P Group (Settings) | No (1 tap) | Yes | ✅ |
+| Same Wi-Fi Network | Yes | Yes | ✅ |
+
+**The only reliable offline calling path on these devices:** manual Wi-Fi Direct group creation + `disableNetworkMonitor=true`. The auto approaches all hit Android security dialogs or hardware limitations.

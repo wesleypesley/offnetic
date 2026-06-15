@@ -59,6 +59,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
 import com.offnetic.ui.theme.FontFamilySyne
+import com.offnetic.ui.theme.Spacing
 import java.util.concurrent.Executors
 
 @Composable
@@ -170,7 +171,7 @@ fun QrScannerScreen(
                 color = Color.White,
                 letterSpacing = (-0.5).sp
             )
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(Spacing.sm))
             Text(
                 text = "Point your camera at the QR code to start a secure, encrypted handshake.",
                 fontFamily = FontFamilySyne,
@@ -178,7 +179,7 @@ fun QrScannerScreen(
                 fontSize = 14.sp,
                 color = Color(0x73FFFFFF),
                 textAlign = TextAlign.Center,
-                modifier = Modifier.padding(horizontal = 48.dp)
+                modifier = Modifier.padding(horizontal = Spacing.xxxl)
             )
 
             Spacer(modifier = Modifier.weight(0.7f))
@@ -187,7 +188,7 @@ fun QrScannerScreen(
                 onClick = onShowMyQr,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 32.dp)
+                    .padding(horizontal = Spacing.xxl)
                     .height(52.dp),
                 shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(
@@ -203,7 +204,7 @@ fun QrScannerScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(Spacing.md))
             Text(
                 text = "You can change this anytime in Settings",
                 fontFamily = FontFamilySyne,
@@ -211,7 +212,7 @@ fun QrScannerScreen(
                 fontSize = 12.sp,
                 color = Color(0x33FFFFFF)
             )
-            Spacer(modifier = Modifier.navigationBarsPadding().height(48.dp))
+            Spacer(modifier = Modifier.navigationBarsPadding().height(Spacing.xxxl))
         }
 
         androidx.compose.material3.FloatingActionButton(
@@ -221,7 +222,7 @@ fun QrScannerScreen(
             },
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(end = 24.dp, bottom = 160.dp),
+                .padding(end = Spacing.xl, bottom = 160.dp),
             containerColor = if (isFlashOn) Color.White else Color(0x1AFFFFFF),
             contentColor = if (isFlashOn) Color(0xFF0A0A0A) else Color.White
         ) {
@@ -242,7 +243,7 @@ fun QrScannerScreen(
                 text = "Camera error: $error",
                 fontFamily = FontFamilySyne,
                 color = Color(0xFFEF4444),
-                modifier = Modifier.align(Alignment.Center).padding(16.dp),
+                modifier = Modifier.align(Alignment.Center).padding(Spacing.lg),
                 textAlign = TextAlign.Center
             )
         }
@@ -251,7 +252,7 @@ fun QrScannerScreen(
             onClick = onBack,
             modifier = Modifier
                 .align(Alignment.TopStart)
-                .padding(top = 48.dp, start = 8.dp)
+                .padding(top = Spacing.xxxl, start = Spacing.sm)
         ) {
             Text("✕", fontFamily = FontFamilySyne, fontWeight = FontWeight.Bold, fontSize = 20.sp, color = Color.White)
         }

@@ -13,6 +13,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,8 +39,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -46,6 +48,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.ui.res.painterResource
+import com.offnetic.R
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -71,7 +75,9 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.offnetic.domain.model.Message
+import com.offnetic.ui.theme.FontFamilyIBM
 import com.offnetic.ui.theme.FontFamilySyne
+import com.offnetic.ui.theme.Spacing
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
@@ -139,14 +145,17 @@ fun ChatScreen(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
+                    .padding(horizontal = Spacing.lg),
                 state = listState,
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+                verticalArrangement = Arrangement.spacedBy(Spacing.xs)
             ) {
                 items(messages, key = { it.id }) { message ->
                     MessageBubble(
                         message = message,
-                        isMine = message.senderPublicKey == myPublicKey
+                        isMine = message.senderPublicKey == myPublicKey,
+                        onDelete = { viewModel.deleteMessage(message.id) },
+                        onCancel = { viewModel.cancelMessage(message.id) },
+                        onRetry = { viewModel.retryMessage(message.id) }
                     )
                 }
             }
@@ -182,20 +191,20 @@ private fun ChatHeader(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 8.dp),
+                .padding(horizontal = Spacing.sm, vertical = Spacing.sm),
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onBack) {
                 Text(
                     text = "←",
-                    fontFamily = FontFamilySyne,
+                    fontFamily = FontFamilyIBM,
                     fontWeight = FontWeight.Bold,
                     fontSize = 20.sp,
                     color = Color.White
                 )
             }
 
-            Column(modifier = Modifier.weight(1f).padding(horizontal = 8.dp)) {
+            Column(modifier = Modifier.weight(1f).padding(horizontal = Spacing.sm)) {
                 Text(
                     text = contactName,
                     fontFamily = FontFamilySyne,
@@ -215,10 +224,10 @@ private fun ChatHeader(
                                 CircleShape
                             )
                     )
-                    Spacer(modifier = Modifier.width(5.dp))
+                    Spacer(modifier = Modifier.width(Spacing.sm))
                     Text(
                         text = if (isOnline) "Online" else "Offline",
-                        fontFamily = FontFamilySyne,
+                        fontFamily = FontFamilyIBM,
                         fontWeight = FontWeight.Medium,
                         fontSize = 11.sp,
                         color = if (isOnline) Color(0xFF4ADE80) else Color(0x40FFFFFF)
@@ -227,29 +236,12 @@ private fun ChatHeader(
             }
 
             IconButton(onClick = onCall) {
-                Canvas(modifier = Modifier.size(20.dp)) {
-                    val cx = size.width / 2
-                    val cy = size.height / 2
-                    val r = size.minDimension * 0.4f
-                    drawCircle(
-                        color = Color(0xB3FFFFFF),
-                        radius = r,
-                        center = Offset(cx, cy),
-                        style = Stroke(width = 1.5f)
-                    )
-                    drawLine(
-                        color = Color(0xB3FFFFFF),
-                        start = Offset(cx - r * 0.6f, cy + r * 0.5f),
-                        end = Offset(cx, cy + r * 1.1f),
-                        strokeWidth = 1.5f
-                    )
-                    drawLine(
-                        color = Color(0xB3FFFFFF),
-                        start = Offset(cx + r * 0.6f, cy + r * 0.5f),
-                        end = Offset(cx, cy + r * 1.1f),
-                        strokeWidth = 1.5f
-                    )
-                }
+                Icon(
+                    painter = painterResource(R.drawable.ic_phone_outlined),
+                    contentDescription = "Call",
+                    tint = Color(0xB3FFFFFF),
+                    modifier = Modifier.size(20.dp)
+                )
             }
         }
     }
@@ -271,13 +263,13 @@ private fun InputBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 8.dp),
+                .padding(horizontal = Spacing.sm, vertical = Spacing.sm),
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onAttachFile) {
                 Text(
                     text = "+",
-                    fontFamily = FontFamilySyne,
+                    fontFamily = FontFamilyIBM,
                     fontWeight = FontWeight.Bold,
                     fontSize = 20.sp,
                     color = Color(0x73FFFFFF)
@@ -305,7 +297,7 @@ private fun InputBar(
                 placeholder = {
                     Text(
                         "Message",
-                        fontFamily = FontFamilySyne,
+                        fontFamily = FontFamilyIBM,
                         color = Color(0x40FFFFFF)
                     )
                 },
@@ -320,13 +312,13 @@ private fun InputBar(
                     containerColor = Color(0x0DFFFFFF)
                 )
             )
-            Spacer(modifier = Modifier.width(4.dp))
+            Spacer(modifier = Modifier.width(Spacing.xs))
             IconButton(
                 onClick = onSend,
                 enabled = textInput.isNotBlank()
             ) {
                 Icon(
-                    imageVector = Icons.AutoMirrored.Filled.Send,
+                    painter = painterResource(R.drawable.ic_send),
                     contentDescription = "Send",
                     tint = if (textInput.isNotBlank()) Color.White else Color(0x40FFFFFF)
                 )
@@ -335,13 +327,18 @@ private fun InputBar(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun MessageBubble(
     message: Message,
-    isMine: Boolean
+    isMine: Boolean,
+    onDelete: () -> Unit = {},
+    onCancel: () -> Unit = {},
+    onRetry: () -> Unit = {}
 ) {
     val backgroundColor = if (isMine) Color(0xFF1E1E1E) else Color(0xFF141414)
     val alignment = if (isMine) Alignment.End else Alignment.Start
+    var showMenu by remember { mutableStateOf(false) }
 
     val shape = RoundedCornerShape(
         topStart = 24.dp,
@@ -353,171 +350,242 @@ private fun MessageBubble(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 2.dp),
+            .padding(vertical = Spacing.xxs),
         horizontalAlignment = alignment
     ) {
-        Surface(
-            shape = shape,
-            color = backgroundColor,
-            modifier = Modifier
-                .widthIn(max = 300.dp)
-                .then(
-                    if (!isMine) Modifier.border(0.5.dp, Color(0x14FFFFFF), shape)
-                    else Modifier
-                )
-        ) {
-            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-                when (message.type) {
-                    Message.TYPE_TEXT -> {
-                        Text(
-                            text = message.content,
-                            fontFamily = FontFamilySyne,
-                            fontWeight = FontWeight.Medium,
-                            fontSize = 15.sp,
-                            color = Color(0xE6FFFFFF),
-                            maxLines = 20,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                    Message.TYPE_VOICE_NOTE -> {
-                        val context = LocalContext.current
-                        var isPlaying by remember { mutableStateOf(false) }
-                        var mediaPlayer by remember { mutableStateOf<android.media.MediaPlayer?>(null) }
-
-                        DisposableEffect(Unit) {
-                            onDispose {
-                                mediaPlayer?.stop()
-                                mediaPlayer?.release()
-                            }
-                        }
-
-                        Row(
-                            modifier = Modifier.clickable {
-                                if (isPlaying) {
-                                    mediaPlayer?.stop()
-                                    mediaPlayer?.release()
-                                    mediaPlayer = null
-                                    isPlaying = false
-                                } else {
-                                    val path = message.attachmentPath
-                                    if (path != null) {
-                                        try {
-                                            val mp = android.media.MediaPlayer().apply {
-                                                setDataSource(path)
-                                                prepare()
-                                                setOnCompletionListener {
-                                                    it.release()
-                                                    mediaPlayer = null
-                                                    isPlaying = false
-                                                }
-                                                start()
-                                            }
-                                            mediaPlayer = mp
-                                            isPlaying = true
-                                        } catch (_: Exception) {
-                                            Toast.makeText(context, "Cannot play voice note", Toast.LENGTH_SHORT).show()
-                                        }
-                                    }
-                                }
-                            },
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                modifier = Modifier.size(12.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Canvas(modifier = Modifier.fillMaxSize()) {
-                                    drawCircle(
-                                        color = if (isPlaying) Color(0xFFEF4444) else Color(0xFF4ADE80),
-                                        radius = size.minDimension / 2
-                                    )
-                                }
-                            }
-                            Spacer(modifier = Modifier.width(6.dp))
+        Box {
+            Surface(
+                shape = shape,
+                color = if (message.type == Message.TYPE_CANCELLED) backgroundColor.copy(alpha = 0.5f) else backgroundColor,
+                modifier = Modifier
+                    .widthIn(max = 300.dp)
+                    .then(
+                        if (!isMine) Modifier.border(0.5.dp, Color(0x14FFFFFF), shape)
+                        else Modifier
+                    )
+                    .combinedClickable(
+                        onClick = {},
+                        onLongClick = { showMenu = true }
+                    )
+            ) {
+                Column(modifier = Modifier.padding(horizontal = Spacing.md, vertical = Spacing.sm)) {
+                    when (message.type) {
+                        Message.TYPE_CANCELLED -> {
+                            val ctx = LocalContext.current
                             Text(
-                                text = if (isPlaying) "Playing..." else message.content,
-                                fontFamily = FontFamilySyne,
+                                text = message.content,
+                                fontFamily = FontFamilyIBM,
                                 fontWeight = FontWeight.Medium,
                                 fontSize = 13.sp,
-                                color = Color(0xB3FFFFFF)
+                                color = Color(0x66FFFFFF)
                             )
-                        }
-                    }
-                    Message.TYPE_FILE, Message.TYPE_IMAGE, Message.TYPE_VIDEO -> {
-                        val context = LocalContext.current
-                        val path = message.attachmentPath
-                        val fileName = message.content.removePrefix("File: ")
-                        val mimeType = inferMimeType(fileName)
-
-                        Column {
-                            when {
-                                mimeType.startsWith("image/") && path != null -> {
-                                    ImageThumbnail(
-                                        path = path,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .heightIn(max = 220.dp)
-                                    ) {
-                                        openFile(context, path, mimeType)
-                                    }
-                                }
-                                mimeType.startsWith("video/") && path != null -> {
-                                    VideoThumbnail(
-                                        path = path,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .heightIn(max = 220.dp)
-                                    ) {
-                                        openFile(context, path, mimeType)
-                                    }
-                                }
-                                else -> {
-                                    DocAttachment(
-                                        fileName = fileName,
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        if (path != null) openFile(context, path, mimeType)
-                                    }
-                                }
+                            Spacer(modifier = Modifier.height(Spacing.sm))
+                            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                                Text(
+                                    text = "Retry",
+                                    fontFamily = FontFamilyIBM,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 12.sp,
+                                    color = Color(0xFF4ADE80),
+                                    modifier = Modifier.clickable { onRetry() }
+                                )
+                                Text(
+                                    text = "Delete",
+                                    fontFamily = FontFamilyIBM,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 12.sp,
+                                    color = Color(0xFFEF4444),
+                                    modifier = Modifier.clickable { onDelete() }
+                                )
                             }
-                            Spacer(modifier = Modifier.height(4.dp))
+                        }
+                        Message.TYPE_TEXT -> {
                             Text(
-                                text = fileName,
-                                fontFamily = FontFamilySyne,
+                                text = message.content,
+                                fontFamily = FontFamilyIBM,
                                 fontWeight = FontWeight.Medium,
-                                fontSize = 12.sp,
-                                color = Color(0x66FFFFFF),
-                                maxLines = 1,
+                                fontSize = 15.sp,
+                                color = Color(0xE6FFFFFF),
+                                maxLines = 20,
                                 overflow = TextOverflow.Ellipsis
                             )
                         }
+                        Message.TYPE_VOICE_NOTE -> {
+                            val context = LocalContext.current
+                            var isPlaying by remember { mutableStateOf(false) }
+                            var mediaPlayer by remember { mutableStateOf<android.media.MediaPlayer?>(null) }
+
+                            DisposableEffect(Unit) {
+                                onDispose {
+                                    mediaPlayer?.stop()
+                                    mediaPlayer?.release()
+                                }
+                            }
+
+                            Row(
+                                modifier = Modifier.combinedClickable(
+                                    onClick = {
+                                    if (isPlaying) {
+                                        mediaPlayer?.stop()
+                                        mediaPlayer?.release()
+                                        mediaPlayer = null
+                                        isPlaying = false
+                                    } else {
+                                        val path = message.attachmentPath
+                                        if (path != null) {
+                                            try {
+                                                val mp = android.media.MediaPlayer().apply {
+                                                    if (path.startsWith("content://")) {
+                                                        setDataSource(context, android.net.Uri.parse(path))
+                                                    } else {
+                                                        setDataSource(path)
+                                                    }
+                                                    prepare()
+                                                    setOnCompletionListener {
+                                                        it.release()
+                                                        mediaPlayer = null
+                                                        isPlaying = false
+                                                    }
+                                                    start()
+                                                }
+                                                mediaPlayer = mp
+                                                isPlaying = true
+                                            } catch (_: Exception) {
+                                                Toast.makeText(context, "Cannot play voice note", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    }
+                                },
+                                onLongClick = { showMenu = true }
+                            ),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier.size(12.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Canvas(modifier = Modifier.fillMaxSize()) {
+                                        drawCircle(
+                                            color = if (isPlaying) Color(0xFFEF4444) else Color(0xFF4ADE80),
+                                            radius = size.minDimension / 2
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(Spacing.sm))
+                                Text(
+                                    text = if (isPlaying) "Playing..." else message.content,
+                                    fontFamily = FontFamilyIBM,
+                                    fontWeight = FontWeight.Medium,
+                                    fontSize = 13.sp,
+                                    color = Color(0xB3FFFFFF)
+                                )
+                            }
+                        }
+                        Message.TYPE_FILE, Message.TYPE_IMAGE, Message.TYPE_VIDEO -> {
+                            val context = LocalContext.current
+                            val path = message.attachmentPath
+                            val fileName = message.content.removePrefix("File: ")
+                            val mimeType = inferMimeType(fileName)
+
+                            Column {
+                                when {
+                                    mimeType.startsWith("image/") && path != null -> {
+                                        ImageThumbnail(
+                                            context = context,
+                                            path = path,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .heightIn(max = 220.dp)
+                                        ) {
+                                            openFile(context, path, mimeType)
+                                        }
+                                    }
+                                    mimeType.startsWith("video/") && path != null -> {
+                                        VideoThumbnail(
+                                            context = context,
+                                            path = path,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .heightIn(max = 220.dp)
+                                        ) {
+                                            openFile(context, path, mimeType)
+                                        }
+                                    }
+                                    else -> {
+                                        DocAttachment(
+                                            fileName = fileName,
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            if (path != null) openFile(context, path, mimeType)
+                                        }
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(Spacing.xs))
+                                Text(
+                                    text = fileName,
+                                    fontFamily = FontFamilyIBM,
+                                    fontWeight = FontWeight.Medium,
+                                    fontSize = 12.sp,
+                                    color = Color(0x66FFFFFF),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                        Message.TYPE_SYSTEM -> {
+                            Text(
+                                text = message.content,
+                                fontFamily = FontFamilyIBM,
+                                fontWeight = FontWeight.Medium,
+                                fontSize = 13.sp,
+                                color = Color(0x66FFFFFF)
+                            )
+                        }
                     }
-                    Message.TYPE_SYSTEM -> {
-                        Text(
-                            text = message.content,
-                            fontFamily = FontFamilySyne,
-                            fontWeight = FontWeight.Medium,
-                            fontSize = 13.sp,
-                            color = Color(0x66FFFFFF)
-                        )
+                }
+            }
+
+            DropdownMenu(
+                expanded = showMenu,
+                onDismissRequest = { showMenu = false }
+            ) {
+                DropdownMenuItem(
+                    text = {
+                        Text("Delete for me", fontFamily = FontFamilyIBM, color = Color(0xFFEF4444))
+                    },
+                    onClick = {
+                        showMenu = false
+                        onDelete()
                     }
+                )
+                if (isMine && !message.isSent && message.type != Message.TYPE_CANCELLED) {
+                    DropdownMenuItem(
+                        text = {
+                            Text("Cancel sending", fontFamily = FontFamilyIBM, color = Color(0xFFEF4444))
+                        },
+                        onClick = {
+                            showMenu = false
+                            onCancel()
+                        }
+                    )
                 }
             }
         }
 
         Text(
             text = formatTime(message.timestamp),
-            fontFamily = FontFamilySyne,
+            fontFamily = FontFamilyIBM,
             fontWeight = FontWeight.Medium,
             fontSize = 11.sp,
             color = Color(0x40FFFFFF),
-            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+            modifier = Modifier.padding(horizontal = Spacing.xs, vertical = Spacing.xxs)
         )
     }
 }
 
 @Composable
 private fun ImageThumbnail(
+    context: android.content.Context,
     path: String,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
@@ -529,7 +597,12 @@ private fun ImageThumbnail(
         try {
             val opts = BitmapFactory.Options().apply { inSampleSize = 2 }
             bitmap = withContext(Dispatchers.IO) {
-                BitmapFactory.decodeFile(path, opts)
+                if (path.startsWith("content://")) {
+                    context.contentResolver.openInputStream(android.net.Uri.parse(path))
+                        ?.use { BitmapFactory.decodeStream(it, null, opts) }
+                } else {
+                    BitmapFactory.decodeFile(path, opts)
+                }
             }
         } catch (_: Exception) {
             failed = true
@@ -554,20 +627,20 @@ private fun ImageThumbnail(
         } else if (!failed) {
             Text(
                 text = "Loading...",
-                fontFamily = FontFamilySyne,
+                fontFamily = FontFamilyIBM,
                 fontWeight = FontWeight.Medium,
                 fontSize = 13.sp,
                 color = Color(0x4DFFFFFF),
-                modifier = Modifier.padding(24.dp)
+                modifier = Modifier.padding(Spacing.xl)
             )
         } else {
             Text(
                 text = "Could not load preview",
-                fontFamily = FontFamilySyne,
+                fontFamily = FontFamilyIBM,
                 fontWeight = FontWeight.Medium,
                 fontSize = 13.sp,
                 color = Color(0x40FFFFFF),
-                modifier = Modifier.padding(24.dp)
+                modifier = Modifier.padding(Spacing.xl)
             )
         }
     }
@@ -575,6 +648,7 @@ private fun ImageThumbnail(
 
 @Composable
 private fun VideoThumbnail(
+    context: android.content.Context,
     path: String,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
@@ -586,7 +660,11 @@ private fun VideoThumbnail(
         val retriever = MediaMetadataRetriever()
         try {
             frame = withContext(Dispatchers.IO) {
-                retriever.setDataSource(path)
+                if (path.startsWith("content://")) {
+                    retriever.setDataSource(context, android.net.Uri.parse(path))
+                } else {
+                    retriever.setDataSource(path)
+                }
                 retriever.getFrameAtTime(1000000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
             }
         } catch (_: Exception) {
@@ -631,20 +709,20 @@ private fun VideoThumbnail(
         } else if (!failed) {
             Text(
                 text = "Loading...",
-                fontFamily = FontFamilySyne,
+                fontFamily = FontFamilyIBM,
                 fontWeight = FontWeight.Medium,
                 fontSize = 13.sp,
                 color = Color(0x4DFFFFFF),
-                modifier = Modifier.padding(24.dp)
+                modifier = Modifier.padding(Spacing.xl)
             )
         } else {
             Text(
                 text = "Could not load preview",
-                fontFamily = FontFamilySyne,
+                fontFamily = FontFamilyIBM,
                 fontWeight = FontWeight.Medium,
                 fontSize = 13.sp,
                 color = Color(0x40FFFFFF),
-                modifier = Modifier.padding(24.dp)
+                modifier = Modifier.padding(Spacing.xl)
             )
         }
     }
@@ -661,7 +739,7 @@ private fun DocAttachment(
             .clip(RoundedCornerShape(12.dp))
             .background(Color(0x0DFFFFFF))
             .clickable { onClick() }
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .padding(horizontal = Spacing.md, vertical = Spacing.md),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Surface(
@@ -672,18 +750,18 @@ private fun DocAttachment(
             Box(contentAlignment = Alignment.Center) {
                 Text(
                     text = fileName.substringAfterLast('.', "?").take(3).uppercase(),
-                    fontFamily = FontFamilySyne,
+                    fontFamily = FontFamilyIBM,
                     fontWeight = FontWeight.Bold,
                     fontSize = 10.sp,
                     color = Color(0x73FFFFFF)
                 )
             }
         }
-        Spacer(modifier = Modifier.width(10.dp))
+        Spacer(modifier = Modifier.width(Spacing.md))
         Column {
             Text(
                 text = fileName,
-                fontFamily = FontFamilySyne,
+                fontFamily = FontFamilyIBM,
                 fontWeight = FontWeight.Medium,
                 fontSize = 14.sp,
                 color = Color.White,
@@ -692,7 +770,7 @@ private fun DocAttachment(
             )
             Text(
                 text = "Tap to open",
-                fontFamily = FontFamilySyne,
+                fontFamily = FontFamilyIBM,
                 fontWeight = FontWeight.Medium,
                 fontSize = 11.sp,
                 color = Color(0x40FFFFFF)
@@ -703,12 +781,16 @@ private fun DocAttachment(
 
 private fun openFile(context: android.content.Context, path: String, mimeType: String) {
     try {
-        val file = java.io.File(path)
-        if (!file.exists()) {
-            Toast.makeText(context, "File not found", Toast.LENGTH_SHORT).show()
-            return
+        val uri: android.net.Uri = if (path.startsWith("content://")) {
+            android.net.Uri.parse(path)
+        } else {
+            val file = java.io.File(path)
+            if (!file.exists()) {
+                Toast.makeText(context, "File not found", Toast.LENGTH_SHORT).show()
+                return
+            }
+            FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
         }
-        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
         val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, mimeType)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -749,6 +831,7 @@ private fun inferMimeType(fileName: String): String {
         "txt" -> "text/plain"
         "html" -> "text/html"
         "csv" -> "text/csv"
+        "m4a", "aac" -> "audio/mp4"
         else -> "application/octet-stream"
     }
 }

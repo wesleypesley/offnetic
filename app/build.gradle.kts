@@ -57,10 +57,20 @@ android {
 
     kotlinOptions { jvmTarget = "11" }
 
+    signingConfigs {
+        create("release") {
+            storeFile = file("offnetic-release.jks")
+            storePassword = "offnetic123"
+            keyAlias = "offnetic"
+            keyPassword = "offnetic123"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
             isShrinkResources = false
+            signingConfig = signingConfigs.getByName("release")
         }
         debug { isMinifyEnabled = false; isDebuggable = true }
     }
@@ -281,5 +291,35 @@ dependencies {
     testImplementation(libs.mockk)
     androidTestImplementation(libs.espresso.core)
     androidTestImplementation(libs.ui.automator)
+}
+
+tasks.register("stripLibsignalDebug") {
+    doLast {
+        val stripExe = "C:/Users/Admin/AppData/Local/Android/Sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/windows-x86_64/bin/llvm-strip.exe"
+        if (!file(stripExe).exists()) {
+            println("llvm-strip not found — skipping")
+            return@doLast
+        }
+        val libDir = file("build/intermediates/merged_native_libs/release/mergeReleaseNativeLibs/out/lib")
+        listOf("arm64-v8a").forEach { abi ->
+            val lib = file("$libDir/$abi/libsignal_jni.so")
+            if (lib.exists()) {
+                val before = lib.length()
+                try {
+                    exec {
+                        commandLine(stripExe, "--strip-debug", lib.absolutePath)
+                    }
+                    val after = lib.length()
+                    println("Stripped libsignal_jni.so: ${before / (1024*1024)}MB → ${after / (1024*1024)}MB")
+                } catch (e: Exception) {
+                    println("Strip failed: ${e.message}")
+                }
+            }
+        }
+    }
+}
+
+tasks.matching { it.name == "mergeReleaseNativeLibs" }.configureEach {
+    finalizedBy("stripLibsignalDebug")
 }
 

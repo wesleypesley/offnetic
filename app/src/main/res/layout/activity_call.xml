@@ -54,6 +54,32 @@
         android:textSize="13sp" />
 
     <LinearLayout
+        android:id="@+id/camera_off_overlay"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_centerInParent="true"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/camera_off_name"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="#99FFFFFF"
+            android:textSize="20sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="Camera off"
+            android:textColor="#4DFFFFFF"
+            android:textSize="13sp" />
+    </LinearLayout>
+
+    <LinearLayout
         android:id="@+id/incoming_buttons"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
@@ -93,31 +119,57 @@
         android:gravity="center"
         android:orientation="horizontal">
 
-        <ImageButton
-            android:id="@+id/toggle_mic_button"
+        <FrameLayout
             android:layout_width="52dp"
             android:layout_height="52dp"
-            android:layout_marginEnd="10dp"
-            android:background="@drawable/call_bg_circle_dark"
-            android:contentDescription="Mute"
-            android:src="@drawable/ic_call_mic"
-            android:tint="#FFFFFF" />
+            android:layout_marginEnd="12dp">
 
-        <ImageButton
-            android:id="@+id/toggle_camera_button"
+            <ImageButton
+                android:id="@+id/toggle_mic_button"
+                android:layout_width="52dp"
+                android:layout_height="52dp"
+                android:background="@drawable/call_bg_circle_dark"
+                android:contentDescription="Mute"
+                android:src="@drawable/ic_call_mic"
+                android:tint="#FFFFFF" />
+
+            <ImageView
+                android:id="@+id/mic_slash"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:layout_gravity="center"
+                android:src="@drawable/ic_call_slash"
+                android:visibility="gone" />
+        </FrameLayout>
+
+        <FrameLayout
             android:layout_width="52dp"
             android:layout_height="52dp"
-            android:layout_marginEnd="10dp"
-            android:background="@drawable/call_bg_circle_dark"
-            android:contentDescription="Camera"
-            android:src="@drawable/ic_call_videocam"
-            android:tint="#FFFFFF" />
+            android:layout_marginEnd="12dp">
+
+            <ImageButton
+                android:id="@+id/toggle_camera_button"
+                android:layout_width="52dp"
+                android:layout_height="52dp"
+                android:background="@drawable/call_bg_circle_dark"
+                android:contentDescription="Camera"
+                android:src="@drawable/ic_call_videocam"
+                android:tint="#FFFFFF" />
+
+            <ImageView
+                android:id="@+id/camera_slash"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:layout_gravity="center"
+                android:src="@drawable/ic_call_slash"
+                android:visibility="gone" />
+        </FrameLayout>
 
         <ImageButton
             android:id="@+id/flip_camera_button"
             android:layout_width="52dp"
             android:layout_height="52dp"
-            android:layout_marginEnd="10dp"
+            android:layout_marginEnd="12dp"
             android:background="@drawable/call_bg_circle_dark"
             android:contentDescription="Flip Camera"
             android:src="@drawable/ic_call_flip"
@@ -128,7 +180,7 @@
             android:id="@+id/hangup_button"
             android:layout_width="60dp"
             android:layout_height="60dp"
-            android:layout_marginEnd="10dp"
+            android:layout_marginEnd="12dp"
             android:background="@drawable/call_bg_circle_red"
             android:contentDescription="Hang Up"
             android:src="@drawable/ic_call_phone"

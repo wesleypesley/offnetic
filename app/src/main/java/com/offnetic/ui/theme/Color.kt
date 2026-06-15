@@ -68,6 +68,13 @@ val FontFamilySyne = FontFamily(
     Font(com.offnetic.R.font.syne_variable, FontWeight.ExtraBold),
 )
 
+val FontFamilyIBM = FontFamily(
+    Font(com.offnetic.R.font.ibm_plex_sans_regular, FontWeight.Normal),
+    Font(com.offnetic.R.font.ibm_plex_sans_medium, FontWeight.Medium),
+    Font(com.offnetic.R.font.ibm_plex_sans_semibold, FontWeight.SemiBold),
+    Font(com.offnetic.R.font.ibm_plex_sans_bold, FontWeight.Bold),
+)
+
 val Typography = androidx.compose.material3.Typography(
     displayLarge = androidx.compose.material3.Typography().displayLarge.copy(
         fontFamily = FontFamilySyne, fontWeight = FontWeight.ExtraBold
@@ -91,22 +98,22 @@ val Typography = androidx.compose.material3.Typography(
         fontFamily = FontFamilySyne, fontWeight = FontWeight.SemiBold
     ),
     bodyLarge = androidx.compose.material3.Typography().bodyLarge.copy(
-        fontFamily = FontFamilySyne, fontWeight = FontWeight.Medium
+        fontFamily = FontFamilyIBM, fontWeight = FontWeight.Medium
     ),
     bodyMedium = androidx.compose.material3.Typography().bodyMedium.copy(
-        fontFamily = FontFamilySyne, fontWeight = FontWeight.Medium
+        fontFamily = FontFamilyIBM, fontWeight = FontWeight.Medium
     ),
     bodySmall = androidx.compose.material3.Typography().bodySmall.copy(
-        fontFamily = FontFamilySyne, fontWeight = FontWeight.Medium
+        fontFamily = FontFamilyIBM, fontWeight = FontWeight.Medium
     ),
     labelLarge = androidx.compose.material3.Typography().labelLarge.copy(
-        fontFamily = FontFamilySyne, fontWeight = FontWeight.SemiBold
+        fontFamily = FontFamilyIBM, fontWeight = FontWeight.SemiBold
     ),
     labelMedium = androidx.compose.material3.Typography().labelMedium.copy(
-        fontFamily = FontFamilySyne, fontWeight = FontWeight.SemiBold
+        fontFamily = FontFamilyIBM, fontWeight = FontWeight.SemiBold
     ),
     labelSmall = androidx.compose.material3.Typography().labelSmall.copy(
-        fontFamily = FontFamilySyne, fontWeight = FontWeight.SemiBold
+        fontFamily = FontFamilyIBM, fontWeight = FontWeight.SemiBold
     )
 )
 

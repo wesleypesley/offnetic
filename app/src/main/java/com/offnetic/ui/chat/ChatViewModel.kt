@@ -65,6 +65,8 @@ class ChatViewModel @Inject constructor(
     private val _isRecording = MutableStateFlow(false)
     val isRecording: StateFlow<Boolean> = _isRecording.asStateFlow()
 
+    val locationRequired: SharedFlow<Unit> = ncapManager.locationRequired
+
     private val _toastMessage = MutableSharedFlow<String>(extraBufferCapacity = 4)
     val toastMessage: SharedFlow<String> = _toastMessage
 
@@ -98,7 +100,9 @@ class ChatViewModel @Inject constructor(
             var wasOnline = false
             ncapManager.peers.collect { peers ->
                 val isNowOnline = peers.any {
-                    it.publicKey == contactPublicKey && it.connectionState == com.offnetic.domain.model.ConnectionState.CONNECTED
+                    it.publicKey == contactPublicKey &&
+                        (it.connectionState == com.offnetic.domain.model.ConnectionState.CONNECTED ||
+                         it.connectionState == com.offnetic.domain.model.ConnectionState.CONNECTING)
                 }
                 if (isNowOnline && !wasOnline) {
                     retryUnsentMessages()
@@ -158,8 +162,12 @@ class ChatViewModel @Inject constructor(
                         file.length(),
                         mimeType
                     )
-                    messageDao.update(entity.copy(id = messageId, isSent = true))
+                    val current = messageDao.getById(messageId)
+                    if (current?.type != com.offnetic.data.local.db.entity.Message.TYPE_CANCELLED) {
+                        messageDao.update(entity.copy(id = messageId, isSent = true))
+                    }
                     Timber.d("File sent via NCAPI to ${contactPublicKey.take(8)}")
+                    withContext(Dispatchers.IO) { file.delete() }
                 } else {
                     Timber.w("No connected peer for file send to ${contactPublicKey.take(8)}")
                     _toastMessage.emit("${_contactName.value} not connected — file saved")
@@ -206,7 +214,10 @@ class ChatViewModel @Inject constructor(
                                 "audio/mp4",
                                 duration
                             )
-                            messageDao.update(entity.copy(id = messageId, isSent = true))
+                            val current = messageDao.getById(messageId)
+                            if (current?.type != com.offnetic.data.local.db.entity.Message.TYPE_CANCELLED) {
+                                messageDao.update(entity.copy(id = messageId, isSent = true))
+                            }
                             Timber.d("Voice note sent to ${contactPublicKey.take(8)}")
                         } catch (e: Exception) {
                             Timber.e(e, "Voice note send failed")
@@ -284,7 +295,10 @@ class ChatViewModel @Inject constructor(
                     val endpointId = connectedEndpoints.first()
                     Timber.d("sendEncrypted: sending on endpoint ${endpointId.take(8)}... (${connectedEndpoints.size} connected)")
                     ncapManager.sendPayload(endpointId, envelope.toBytes())
-                    messageDao.update(entity.copy(id = messageId, isSent = true))
+                    val current = messageDao.getById(messageId)
+                    if (current?.type != com.offnetic.data.local.db.entity.Message.TYPE_CANCELLED) {
+                        messageDao.update(entity.copy(id = messageId, isSent = true))
+                    }
                     Timber.d("sendEncrypted: sent + marked isSent=true for msg id=$messageId")
                 } else {
                     val anyPeer = ncapManager.peers.value.find { it.publicKey == contactPublicKey }
@@ -327,7 +341,9 @@ class ChatViewModel @Inject constructor(
                                 payload = ciphertext
                             )
                             ncapManager.sendPayload(endpointId, envelope.toBytes())
-                            messageDao.update(msg.copy(isSent = true))
+                            if (messageDao.getById(msg.id)?.type != com.offnetic.data.local.db.entity.Message.TYPE_CANCELLED) {
+                                messageDao.update(msg.copy(isSent = true))
+                            }
                             Timber.d("retryUnsentMessages: resent text msg id=${msg.id}")
                         }
                         com.offnetic.data.local.db.entity.Message.TYPE_FILE -> {
@@ -335,7 +351,9 @@ class ChatViewModel @Inject constructor(
                             if (path == null || !java.io.File(path).exists()) continue
                             val file = java.io.File(path)
                             ncapManager.sendFile(endpointId, path, file.name, file.length(), mimeTypeFor(file.name))
-                            messageDao.update(msg.copy(isSent = true))
+                            if (messageDao.getById(msg.id)?.type != com.offnetic.data.local.db.entity.Message.TYPE_CANCELLED) {
+                                messageDao.update(msg.copy(isSent = true))
+                            }
                             Timber.d("retryUnsentMessages: resent file msg id=${msg.id}")
                         }
                         com.offnetic.data.local.db.entity.Message.TYPE_VOICE_NOTE -> {
@@ -344,7 +362,9 @@ class ChatViewModel @Inject constructor(
                             val file = java.io.File(path)
                             val duration = msg.content.removePrefix("Voice note").trim()
                             ncapManager.sendFile(endpointId, path, file.name, file.length(), "audio/mp4", duration)
-                            messageDao.update(msg.copy(isSent = true))
+                            if (messageDao.getById(msg.id)?.type != com.offnetic.data.local.db.entity.Message.TYPE_CANCELLED) {
+                                messageDao.update(msg.copy(isSent = true))
+                            }
                             Timber.d("retryUnsentMessages: resent voice note msg id=${msg.id}")
                         }
                         else -> continue
@@ -399,5 +419,81 @@ class ChatViewModel @Inject constructor(
         val min = seconds / 60
         val sec = seconds % 60
         return if (min > 0) "$min:${sec.toString().padStart(2, '0')}" else "0:${sec.toString().padStart(2, '0')}"
+    }
+
+    fun deleteMessage(messageId: Long) {
+        viewModelScope.launch {
+            try {
+                val msg = messageDao.getById(messageId)
+                messageDao.deleteById(messageId)
+                val path = msg?.attachmentPath
+                if (path != null) {
+                    withContext(Dispatchers.IO) {
+                        if (!path.startsWith("content://")) {
+                            java.io.File(path).delete()
+                        }
+                    }
+                }
+            }
+            catch (e: Exception) { Timber.e(e, "deleteMessage failed") }
+        }
+    }
+
+    fun cancelMessage(messageId: Long) {
+        viewModelScope.launch {
+            try {
+                val msg = messageDao.getById(messageId) ?: return@launch
+                messageDao.update(
+                    com.offnetic.data.local.db.entity.Message(
+                        id = msg.id, sessionId = msg.sessionId, chatId = msg.chatId,
+                        senderPublicKey = msg.senderPublicKey, content = "Message cancelled",
+                        type = com.offnetic.data.local.db.entity.Message.TYPE_CANCELLED,
+                        timestamp = msg.timestamp, isSent = false, isRead = false,
+                        attachmentPath = msg.attachmentPath, attachmentType = msg.attachmentType
+                    )
+                )
+            } catch (e: Exception) { Timber.e(e, "cancelMessage failed") }
+        }
+    }
+
+    fun retryMessage(messageId: Long) {
+        viewModelScope.launch {
+            val msg = messageDao.getById(messageId) ?: return@launch
+            if (msg.type == com.offnetic.data.local.db.entity.Message.TYPE_TEXT) {
+                val json = org.json.JSONObject().apply {
+                    put("content", msg.content)
+                    put("timestamp", System.currentTimeMillis())
+                }
+                val plaintext = json.toString().toByteArray(Charsets.UTF_8)
+                val entity = msg.copy(type = com.offnetic.data.local.db.entity.Message.TYPE_TEXT, isSent = false)
+                messageDao.update(entity)
+                sendEncrypted(plaintext, com.offnetic.data.local.db.entity.Message.TYPE_TEXT, msg.content)
+            } else if (msg.type == com.offnetic.data.local.db.entity.Message.TYPE_FILE ||
+                       msg.type == com.offnetic.data.local.db.entity.Message.TYPE_VOICE_NOTE ||
+                       msg.type == com.offnetic.data.local.db.entity.Message.TYPE_IMAGE ||
+                       msg.type == com.offnetic.data.local.db.entity.Message.TYPE_VIDEO) {
+                val path = msg.attachmentPath
+                if (path != null && java.io.File(path).exists()) {
+                    val entity = msg.copy(
+                        type = when (msg.type) {
+                            com.offnetic.data.local.db.entity.Message.TYPE_VOICE_NOTE -> msg.type
+                            else -> com.offnetic.data.local.db.entity.Message.TYPE_FILE
+                        },
+                        isSent = false
+                    )
+                    messageDao.update(entity)
+                    val connected = ncapManager.getConnectedEndpointIds(contactPublicKey)
+                    if (connected.isNotEmpty()) {
+                        val file = java.io.File(path)
+                        val mime = if (msg.type == com.offnetic.data.local.db.entity.Message.TYPE_VOICE_NOTE) "audio/mp4"
+                            else mimeTypeFor(file.name)
+                        ncapManager.sendFile(connected.first(), path, file.name, file.length(), mime)
+                        messageDao.update(entity.copy(isSent = true))
+                    } else {
+                        _toastMessage.emit("${_contactName.value} not connected")
+                    }
+                }
+            }
+        }
     }
 }

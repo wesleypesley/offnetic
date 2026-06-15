@@ -1,12 +1,19 @@
 package com.offnetic.ui.navigation
 
 import android.content.Intent
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -62,9 +69,45 @@ fun OffneticNavHost() {
         }
     }
 
+    var showLocationDialog by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        ncapManager.locationRequired.collect { showLocationDialog = true }
+    }
+    if (showLocationDialog) {
+        AlertDialog(
+            onDismissRequest = { showLocationDialog = false },
+            title = { Text("Location Required", fontWeight = FontWeight.Bold) },
+            text = { Text("Location must be enabled for device discovery. Open Settings to turn it on.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showLocationDialog = false
+                    context.startActivity(Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS))
+                }) {
+                    Text("Open Settings", color = Color(0xFF4ADE80))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLocationDialog = false }) {
+                    Text("Cancel", color = Color(0x66FFFFFF))
+                }
+            },
+            containerColor = Color(0xFF141414),
+            titleContentColor = Color.White,
+            textContentColor = Color(0xB3FFFFFF)
+        )
+    }
+
+    val splashViewModel: SplashViewModel = hiltViewModel()
+    val hasIdentity by splashViewModel.hasIdentity.collectAsState()
+    val hasProfile by splashViewModel.hasProfile.collectAsState()
+
     NavHost(
         navController = navController,
-        startDestination = Routes.SPLASH
+        startDestination = when {
+            !hasIdentity -> Routes.SPLASH
+            !hasProfile -> Routes.PROFILE_SETUP
+            else -> Routes.MAIN
+        }
     ) {
         composable(Routes.SPLASH) {
             val splashViewModel: SplashViewModel = hiltViewModel()

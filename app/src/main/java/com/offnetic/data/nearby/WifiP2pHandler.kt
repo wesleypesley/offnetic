@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.net.wifi.WpsInfo
 import android.net.wifi.p2p.WifiP2pConfig
 import android.net.wifi.p2p.WifiP2pInfo
 import android.net.wifi.p2p.WifiP2pManager
@@ -52,8 +53,6 @@ class WifiP2pHandler @Inject constructor(
 
     companion object {
         private const val TAG = "P2P_CALL"
-        private const val TIMEOUT_MS = 10_000L
-        private const val MAX_RETRIES = 3
     }
 
     private val receiver = object : BroadcastReceiver() {
@@ -99,6 +98,31 @@ class WifiP2pHandler @Inject constructor(
         callback = cb
     }
 
+    fun testCreateGroup() {
+        if (p2pManager == null) {
+            android.util.Log.e(TAG, "testCreateGroup: P2P manager null")
+            return
+        }
+        scope.launch(Dispatchers.Main) {
+            ensureChannel()
+            removeExistingGroups()
+            deletePersistentGroups()
+            android.util.Log.e(TAG, "testCreateGroup: calling createGroup...")
+            suspendCancellableCoroutine<Unit> { cont ->
+                p2pManager!!.createGroup(channel!!, object : WifiP2pManager.ActionListener {
+                    override fun onSuccess() {
+                        android.util.Log.e(TAG, "testCreateGroup: createGroup SUCCESS")
+                        cont.resume(Unit)
+                    }
+                    override fun onFailure(reason: Int) {
+                        android.util.Log.e(TAG, "testCreateGroup: createGroup FAILED reason=$reason")
+                        cont.resume(Unit)
+                    }
+                })
+            }
+        }
+    }
+
     fun startP2pCall(endpointId: String, peerPublicKey: String, myPublicKey: String) {
         if (p2pManager == null) {
             android.util.Log.e(TAG, "P2P manager null — P2P not supported on this device")
@@ -108,13 +132,13 @@ class WifiP2pHandler @Inject constructor(
         val isInitiator = myPublicKey < peerPublicKey
         android.util.Log.e(TAG, "startP2pCall myKey=${myPublicKey.take(8)}... peerKey=${peerPublicKey.take(8)}... initiator=$isInitiator")
         if (isInitiator) {
-            startAsInitiator(endpointId, peerPublicKey)
+            startAsGroupOwner(peerPublicKey)
         } else {
-            enterDiscoveryMode(peerPublicKey)
+            connectToGroupOwner(peerPublicKey)
         }
     }
 
-    private fun startAsInitiator(endpointId: String, peerPublicKey: String) {
+    private fun startAsGroupOwner(peerPublicKey: String) {
         p2pCallJob?.cancel()
         p2pCallJob = scope.launch(Dispatchers.Main) {
             try {
@@ -122,54 +146,32 @@ class WifiP2pHandler @Inject constructor(
                 isActive = true
                 removeExistingGroups()
                 deletePersistentGroups()
-                android.util.Log.e(TAG, "Discovering peer (initiator)...")
-                val peerMac = discoverPeerWithRetry(maxAttempts = 10, intervalMs = 2000L)
-                if (peerMac.isNullOrEmpty() || peerMac == "02:00:00:00:00:00") {
-                    android.util.Log.e(TAG, "no peer found via discovery")
-                    p2pConnectionReady.getOrPut(peerPublicKey) { CompletableDeferred() }.complete(false)
-                    return@launch
-                }
 
+                android.util.Log.e(TAG, "Creating P2P group (GO)...")
                 suspendCancellableCoroutine<Unit> { cont ->
-                    p2pManager?.stopPeerDiscovery(channel, object : WifiP2pManager.ActionListener {
-                        override fun onSuccess() { cont.resume(Unit) }
-                        override fun onFailure(reason: Int) { cont.resume(Unit) }
+                    p2pManager!!.createGroup(channel!!, object : WifiP2pManager.ActionListener {
+                        override fun onSuccess() {
+                            android.util.Log.e(TAG, "createGroup SUCCESS — waiting for peer connection")
+                            cont.resume(Unit)
+                        }
+                        override fun onFailure(reason: Int) {
+                            android.util.Log.e(TAG, "createGroup FAILED reason=$reason")
+                            p2pConnectionReady.getOrPut(peerPublicKey) { CompletableDeferred() }.complete(false)
+                            cont.resume(Unit)
+                        }
                     })
                 }
+                if (!isActive) return@launch
 
-                val config = WifiP2pConfig().apply {
-                    deviceAddress = peerMac
-                    groupOwnerIntent = 1
-                }
-
-                android.util.Log.e(TAG, "Negotiating P2P with $peerMac via connect()")
-                val deferred = CompletableDeferred<WifiP2pInfo>()
-                connectionInfoDeferred = deferred
-
-                p2pManager?.connect(channel!!, config, object : WifiP2pManager.ActionListener {
-                    override fun onSuccess() { android.util.Log.e(TAG, "connect initiated") }
-                    override fun onFailure(reason: Int) {
-                        android.util.Log.e(TAG, "connect failed: $reason, retrying...")
-                        scope.launch {
-                            kotlinx.coroutines.delay(1000L)
-                            if (isActive) {
-                                p2pManager?.connect(channel!!, config, this@WifiP2pHandler.retryAction("connect", config) {
-                                    android.util.Log.e(TAG, "connect retry initiated")
-                                })
-                            }
-                        }
-                    }
-                })
-
-                val info = try {
-                    withTimeout(TIMEOUT_MS) { deferred.await() }
-                } catch (_: Exception) {
-                    android.util.Log.e(TAG, "negotiation timeout")
+                val info = waitForP2pConnection()
+                if (info == null || !info.groupFormed) {
+                    android.util.Log.e(TAG, "GO: no peer joined group")
                     p2pConnectionReady.getOrPut(peerPublicKey) { CompletableDeferred() }.complete(false)
                     return@launch
                 }
 
-                android.util.Log.e(TAG, "P2P established — GO=${info.isGroupOwner} ip=${info.groupOwnerAddress?.hostAddress}")
+                android.util.Log.e(TAG, "GO: group formed — isGO=${info.isGroupOwner} ip=${info.groupOwnerAddress?.hostAddress}")
+                p2pConnected = true
                 p2pConnectionReady.getOrPut(peerPublicKey) { CompletableDeferred() }.complete(true)
 
                 val peerIp = derivePeerIp(info)
@@ -177,9 +179,91 @@ class WifiP2pHandler @Inject constructor(
                     callback?.onP2pReady(peerPublicKey, peerIp)
                 }
             } catch (e: Exception) {
-                android.util.Log.e(TAG, "P2P setup failed: ${e.message}")
+                android.util.Log.e(TAG, "GO setup failed: ${e.message}")
                 p2pConnectionReady.getOrPut(peerPublicKey) { CompletableDeferred() }.complete(false)
             }
+        }
+    }
+
+    private fun connectToGroupOwner(peerPublicKey: String) {
+        p2pCallJob?.cancel()
+        p2pCallJob = scope.launch(Dispatchers.Main) {
+            try {
+                ensureChannel()
+                isActive = true
+                removeExistingGroups()
+                deletePersistentGroups()
+
+                android.util.Log.e(TAG, "Discovering GO (responder)...")
+                val goMac = discoverPeerWithRetry(maxAttempts = 15, intervalMs = 2000L)
+                if (goMac.isNullOrEmpty() || goMac == "02:00:00:00:00:00") {
+                    android.util.Log.e(TAG, "responder: no GO found")
+                    p2pConnectionReady.getOrPut(peerPublicKey) { CompletableDeferred() }.complete(false)
+                    return@launch
+                }
+
+                android.util.Log.e(TAG, "responder: connecting to GO $goMac")
+                val config = WifiP2pConfig().apply {
+                    deviceAddress = goMac
+                    groupOwnerIntent = 0
+                    wps.setup = WpsInfo.PBC
+                }
+                var connected = false
+                for (attempt in 1..5) {
+                    if (!isActive) break
+                    if (attempt > 1) delay(2000L)
+                    val result = suspendCancellableCoroutine<Int> { cont ->
+                        p2pManager?.connect(channel!!, config, object : WifiP2pManager.ActionListener {
+                            override fun onSuccess() {
+                                android.util.Log.e(TAG, "responder: connect() SUCCESS (attempt $attempt)")
+                                cont.resume(0)
+                            }
+                            override fun onFailure(reason: Int) {
+                                android.util.Log.e(TAG, "responder: connect() FAILED reason=$reason (attempt $attempt)")
+                                cont.resume(reason)
+                            }
+                        })
+                    }
+                    if (result == 0) {
+                        connected = true
+                        break
+                    }
+                }
+                if (!connected || !isActive) {
+                    p2pConnectionReady.getOrPut(peerPublicKey) { CompletableDeferred() }.complete(false)
+                    return@launch
+                }
+                if (!isActive) return@launch
+
+                val info = waitForP2pConnection()
+                if (info == null || !info.groupFormed) {
+                    android.util.Log.e(TAG, "responder: connection failed")
+                    p2pConnectionReady.getOrPut(peerPublicKey) { CompletableDeferred() }.complete(false)
+                    return@launch
+                }
+
+                android.util.Log.e(TAG, "responder: connected — isGO=${info.isGroupOwner} ip=${info.groupOwnerAddress?.hostAddress}")
+                p2pConnected = true
+                p2pConnectionReady.getOrPut(peerPublicKey) { CompletableDeferred() }.complete(true)
+
+                val peerIp = derivePeerIp(info)
+                if (peerIp != null) {
+                    callback?.onP2pReady(peerPublicKey, peerIp)
+                }
+            } catch (e: Exception) {
+                android.util.Log.e(TAG, "responder setup failed: ${e.message}")
+                p2pConnectionReady.getOrPut(peerPublicKey) { CompletableDeferred() }.complete(false)
+            }
+        }
+    }
+
+    private suspend fun waitForP2pConnection(): WifiP2pInfo? {
+        val deferred = CompletableDeferred<WifiP2pInfo>()
+        connectionInfoDeferred = deferred
+        return try {
+            withTimeout(30_000L) { deferred.await() }
+        } catch (_: Exception) {
+            null
         }
     }
 
@@ -223,50 +307,6 @@ class WifiP2pHandler @Inject constructor(
             }
         }
         return null
-    }
-
-    fun enterDiscoveryMode(peerPublicKey: String) {
-        if (p2pManager == null) {
-            p2pConnectionReady.getOrPut(peerPublicKey) { CompletableDeferred() }.complete(false)
-            return
-        }
-        p2pCallJob?.cancel()
-        p2pCallJob = scope.launch(Dispatchers.Main) {
-            try {
-                ensureChannel()
-                isActive = true
-                removeExistingGroups()
-                deletePersistentGroups()
-                android.util.Log.e(TAG, "Entering discovery mode (responder) for ${peerPublicKey.take(8)}")
-                p2pManager?.discoverPeers(channel, object : WifiP2pManager.ActionListener {
-                    override fun onSuccess() { android.util.Log.e(TAG, "discovery mode active (responder)") }
-                    override fun onFailure(reason: Int) { android.util.Log.e(TAG, "discovery mode failed reason=$reason") }
-                })
-
-                val deferred = CompletableDeferred<WifiP2pInfo>()
-                connectionInfoDeferred = deferred
-
-                val info = try {
-                    withTimeout(30_000L) { deferred.await() }
-                } catch (_: Exception) {
-                    android.util.Log.e(TAG, "responder: connection wait timeout")
-                    p2pConnectionReady.getOrPut(peerPublicKey) { CompletableDeferred() }.complete(false)
-                    return@launch
-                }
-
-                android.util.Log.e(TAG, "Responder connected — GO=${info.isGroupOwner} ip=${info.groupOwnerAddress?.hostAddress}")
-                p2pConnected = true
-                p2pConnectionReady.getOrPut(peerPublicKey) { CompletableDeferred() }.complete(true)
-
-                val peerIp = derivePeerIp(info)
-                if (peerIp != null) {
-                    callback?.onP2pReady(peerPublicKey, peerIp)
-                }
-            } catch (e: Exception) {
-                android.util.Log.e(TAG, "discovery mode error: ${e.message}")
-                p2pConnectionReady.getOrPut(peerPublicKey) { CompletableDeferred() }.complete(false)
-            }
-        }
     }
 
     fun onP2pPayload(senderPublicKey: String, endpointId: String, json: JSONObject) {
@@ -342,43 +382,5 @@ class WifiP2pHandler @Inject constructor(
                 try { method.invoke(p2pManager, channel, netid, null) } catch (_: Exception) {}
             }
         } catch (_: Exception) {}
-    }
-
-    private fun retryAction(
-        name: String,
-        config: WifiP2pConfig?,
-        attempt: Int = 1,
-        onSuccess: () -> Unit
-    ): WifiP2pManager.ActionListener {
-        return object : WifiP2pManager.ActionListener {
-            override fun onSuccess() {
-                android.util.Log.e(TAG, "$name succeeded (attempt $attempt)")
-                onSuccess()
-            }
-
-            override fun onFailure(reason: Int) {
-                val reasonStr = when (reason) {
-                    0 -> "ERROR"
-                    1 -> "P2P_UNSUPPORTED"
-                    2 -> "BUSY"
-                    3 -> "NO_SERVICE_REQUESTS"
-                    else -> "UNKNOWN($reason)"
-                }
-                android.util.Log.e(TAG, "$name failed (attempt $attempt, reason=$reason=$reasonStr)")
-                if (reason != 1 && attempt < MAX_RETRIES) {
-                    val delayMs = 500L * (1 shl (attempt - 1))
-                    android.util.Log.e(TAG, "$name retrying in ${delayMs}ms")
-                    scope.launch {
-                        delay(delayMs)
-                        if (isActive && config != null) {
-                            p2pManager?.connect(
-                                channel!!, config,
-                                retryAction(name, config, attempt + 1, onSuccess)
-                            )
-                        }
-                    }
-                }
-            }
-        }
     }
 }

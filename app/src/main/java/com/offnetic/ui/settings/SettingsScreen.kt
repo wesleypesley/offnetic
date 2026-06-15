@@ -28,7 +28,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.offnetic.ui.theme.FontFamilyIBM
 import com.offnetic.ui.theme.FontFamilySyne
+import com.offnetic.ui.theme.Spacing
 
 @Composable
 fun SettingsScreen(
@@ -40,13 +42,13 @@ fun SettingsScreen(
         containerColor = Color(0xFF0A0A0A)
     ) { innerPadding ->
         Column(modifier = Modifier.padding(innerPadding)) {
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(Spacing.lg))
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.xl),
                 horizontalArrangement = Arrangement.Start
             ) {
                 TextButton(onClick = onBack) {
-                    Text("← Back", fontFamily = FontFamilySyne, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = Color.White)
+                    Text("← Back", fontFamily = FontFamilyIBM, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = Color.White)
                 }
             }
             SettingsContent()
@@ -63,10 +65,10 @@ fun SettingsContent(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 24.dp)
+            .padding(horizontal = Spacing.xl)
             .verticalScroll(rememberScrollState())
     ) {
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(Spacing.md))
         Text(
             text = "Settings",
             fontFamily = FontFamilySyne,
@@ -74,7 +76,7 @@ fun SettingsContent(
             fontSize = 22.sp,
             color = Color.White
         )
-        Spacer(modifier = Modifier.height(28.dp))
+        Spacer(modifier = Modifier.height(Spacing.xxl))
         SectionHeader("Proximity Pings")
         ToggleRow(
             title = "Ping Notifications",
@@ -82,7 +84,7 @@ fun SettingsContent(
             checked = proximityPings,
             onToggle = { viewModel.setProximityPingsEnabled(it) }
         )
-        Spacer(modifier = Modifier.navigationBarsPadding().height(48.dp))
+        Spacer(modifier = Modifier.navigationBarsPadding().height(Spacing.xxxl))
     }
 }
 
@@ -95,7 +97,7 @@ private fun SectionHeader(title: String) {
         fontSize = 11.sp,
         letterSpacing = 1.5.sp,
         color = Color(0x40FFFFFF),
-        modifier = Modifier.padding(vertical = 4.dp)
+        modifier = Modifier.padding(vertical = Spacing.xs)
     )
 }
 
@@ -107,14 +109,14 @@ private fun ToggleRow(
     onToggle: (Boolean) -> Unit
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+        modifier = Modifier.fillMaxWidth().padding(vertical = Spacing.md),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(title, fontFamily = FontFamilySyne, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = Color.White)
-            Text(subtitle, fontFamily = FontFamilySyne, fontWeight = FontWeight.Medium, fontSize = 12.sp, color = Color(0x40FFFFFF))
+            Text(title, fontFamily = FontFamilyIBM, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = Color.White)
+            Text(subtitle, fontFamily = FontFamilyIBM, fontWeight = FontWeight.Medium, fontSize = 12.sp, color = Color(0x40FFFFFF))
         }
-        Spacer(modifier = Modifier.width(12.dp))
+        Spacer(modifier = Modifier.width(Spacing.md))
         Switch(
             checked = checked,
             onCheckedChange = onToggle,
@@ -131,13 +133,13 @@ private fun ToggleRow(
 @Composable
 private fun NavRow(title: String, subtitle: String, onClick: () -> Unit) {
     Row(
-        modifier = Modifier.fillMaxWidth().clickable { onClick() }.padding(vertical = 14.dp),
+        modifier = Modifier.fillMaxWidth().clickable { onClick() }.padding(vertical = Spacing.md),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(title, fontFamily = FontFamilySyne, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = Color.White)
-            Text(subtitle, fontFamily = FontFamilySyne, fontWeight = FontWeight.Medium, fontSize = 12.sp, color = Color(0x40FFFFFF))
+            Text(title, fontFamily = FontFamilyIBM, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = Color.White)
+            Text(subtitle, fontFamily = FontFamilyIBM, fontWeight = FontWeight.Medium, fontSize = 12.sp, color = Color(0x40FFFFFF))
         }
-        Text("→", fontFamily = FontFamilySyne, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color(0x40FFFFFF))
+        Text("→", fontFamily = FontFamilyIBM, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color(0x40FFFFFF))
     }
 }

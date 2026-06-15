@@ -1,3 +1,0 @@
-[    2327ms] [WARNING] Unrecognized DevSite custom element - DevsiteCaptcha NotSupportedError: Failed to execute 'define' on 'CustomElementRegistry': the name "devsite-captcha" has already been used with this registry
-    at https://www.gstatic.com/devrel-devsite/prod/v8b2f8e7f8a7704cc38c0519ef05e8f889c427cc26f7c8f743e84df2a01b1dee7/developers/js/devsite_app_custom_elements_module.js:2207:241
-    at https://www.gstatic.com/devrel-devsite/prod/v8b2f8e7f8a7704cc38c0519ef05e8f889c427cc26f7c8f743e84df2a01b1dee7/developers/js/devsite_app_custom_elements_module.js:3713:391 @ https://www.gstatic.com/devrel-devsite/prod/v8b2f8e7f8a7704cc38c0519ef05e8f889c427cc26f7c8f743e84df2a01b1dee7/developers/js/devsite_app_custom_elements_module.js:2206

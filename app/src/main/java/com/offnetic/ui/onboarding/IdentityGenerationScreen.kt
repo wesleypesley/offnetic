@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.offnetic.ui.theme.FontFamilySyne
+import com.offnetic.ui.theme.Spacing
 import kotlinx.coroutines.delay
 
 @Composable
@@ -86,7 +87,7 @@ fun IdentityGenerationScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 32.dp),
+                .padding(horizontal = Spacing.xxl),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center
         ) {
@@ -135,7 +136,7 @@ fun IdentityGenerationScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(48.dp))
+            Spacer(modifier = Modifier.height(Spacing.xxxl))
 
             Text(
                 text = if (phase == 0) "Creating your identity" else "Identity created",
@@ -146,7 +147,7 @@ fun IdentityGenerationScreen(
                 letterSpacing = (-0.5).sp
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(Spacing.sm))
 
             Text(
                 text = if (phase == 0)
@@ -161,20 +162,20 @@ fun IdentityGenerationScreen(
                 lineHeight = 22.sp
             )
 
-            Spacer(modifier = Modifier.height(40.dp))
+            Spacer(modifier = Modifier.height(Spacing.xxxl))
 
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(Color(0x08FFFFFF), RoundedCornerShape(12.dp))
                     .border(1.dp, Color(0x0FFFFFFF), RoundedCornerShape(12.dp))
-                    .padding(14.dp)
+                    .padding(Spacing.lg)
             ) {
                 Column {
                     lines.forEachIndexed { i, line ->
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(vertical = 5.dp)
+                            modifier = Modifier.padding(vertical = Spacing.sm)
                         ) {
                             Box(
                                 modifier = Modifier
@@ -188,7 +189,7 @@ fun IdentityGenerationScreen(
                                         }
                                     )
                             )
-                            Spacer(modifier = Modifier.width(10.dp))
+                            Spacer(modifier = Modifier.width(Spacing.md))
                             Text(
                                 text = line,
                                 fontFamily = FontFamilySyne,
@@ -206,7 +207,7 @@ fun IdentityGenerationScreen(
             }
 
             if (phase == 1) {
-                Spacer(modifier = Modifier.height(32.dp))
+                Spacer(modifier = Modifier.height(Spacing.xxl))
                 Button(
                     onClick = onDone,
                     modifier = Modifier

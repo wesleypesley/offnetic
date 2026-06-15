@@ -39,7 +39,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.offnetic.ui.theme.FontFamilyIBM
 import com.offnetic.ui.theme.FontFamilySyne
+import com.offnetic.ui.theme.Spacing
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -68,10 +70,10 @@ fun ContactDetailScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(horizontal = 24.dp)
+                .padding(horizontal = Spacing.xl)
                 .verticalScroll(rememberScrollState())
         ) {
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(Spacing.lg))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -80,7 +82,7 @@ fun ContactDetailScreen(
                 TextButton(onClick = onBack) {
                     Text(
                         text = "← Back",
-                        fontFamily = FontFamilySyne,
+                        fontFamily = FontFamilyIBM,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 14.sp,
                         color = Color.White
@@ -88,7 +90,7 @@ fun ContactDetailScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(Spacing.xl))
 
             if (uiState.isLoading) {
                 Box(
@@ -97,7 +99,7 @@ fun ContactDetailScreen(
                 ) {
                     Text(
                         text = "Loading...",
-                        fontFamily = FontFamilySyne,
+                        fontFamily = FontFamilyIBM,
                         color = Color(0x73FFFFFF)
                     )
                 }
@@ -112,7 +114,7 @@ fun ContactDetailScreen(
                 ) {
                     Text(
                         text = "Contact not found",
-                        fontFamily = FontFamilySyne,
+                        fontFamily = FontFamilyIBM,
                         color = Color(0x73FFFFFF)
                     )
                 }
@@ -138,7 +140,7 @@ fun ContactDetailScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(Spacing.xl))
 
             Text(
                 text = contact.displayName,
@@ -149,25 +151,25 @@ fun ContactDetailScreen(
                 modifier = Modifier.align(Alignment.CenterHorizontally)
             )
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(Spacing.xl))
 
             DetailRow("Public Key", contact.publicKey.take(24) + "...")
             DetailRow("Added", formatTimestamp(contact.addedAt))
             DetailRow("Last Seen", formatTimestamp(contact.lastSeenAt))
             DetailRow("Verified", if (contact.isVerified) "Yes" else "No")
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(Spacing.xxl))
 
             uiState.actionMessage?.let { msg ->
                 Text(
                     text = msg,
-                    fontFamily = FontFamilySyne,
+                    fontFamily = FontFamilyIBM,
                     fontWeight = FontWeight.Medium,
                     fontSize = 13.sp,
                     color = Color(0xFF4ADE80),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 16.dp)
+                        .padding(bottom = Spacing.lg)
                         .background(Color(0xFF0A0A0A))
                 )
             }
@@ -185,10 +187,10 @@ fun ContactDetailScreen(
                     brush = androidx.compose.ui.graphics.SolidColor(Color(0x14FFFFFF))
                 )
             ) {
-                Text("Remove Contact", fontFamily = FontFamilySyne, fontWeight = FontWeight.SemiBold)
+                Text("Remove Contact", fontFamily = FontFamilyIBM, fontWeight = FontWeight.SemiBold)
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(Spacing.md))
 
             OutlinedButton(
                 onClick = { showHardDeleteDialog = true },
@@ -203,10 +205,10 @@ fun ContactDetailScreen(
                     brush = androidx.compose.ui.graphics.SolidColor(Color(0x24FFFFFF))
                 )
             ) {
-                Text("Delete Contact & Data", fontFamily = FontFamilySyne, fontWeight = FontWeight.SemiBold)
+                Text("Delete Contact & Data", fontFamily = FontFamilyIBM, fontWeight = FontWeight.SemiBold)
             }
 
-            Spacer(modifier = Modifier.navigationBarsPadding().height(48.dp))
+            Spacer(modifier = Modifier.navigationBarsPadding().height(Spacing.xxxl))
         }
     }
 
@@ -246,20 +248,20 @@ private fun DetailRow(label: String, value: String) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp)
+            .padding(vertical = Spacing.sm)
     ) {
         Text(
             text = label.uppercase(),
-            fontFamily = FontFamilySyne,
+            fontFamily = FontFamilyIBM,
             fontWeight = FontWeight.SemiBold,
             fontSize = 11.sp,
             letterSpacing = 1.5.sp,
             color = Color(0x40FFFFFF)
         )
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(Spacing.xs))
         Text(
             text = value,
-            fontFamily = FontFamilySyne,
+            fontFamily = FontFamilyIBM,
             fontWeight = FontWeight.Medium,
             fontSize = 15.sp,
             color = Color.White
@@ -292,7 +294,7 @@ private fun ConfirmDialog(
         text = {
             Text(
                 text = message,
-                fontFamily = FontFamilySyne,
+                fontFamily = FontFamilyIBM,
                 fontWeight = FontWeight.Medium,
                 fontSize = 15.sp,
                 color = Color(0x73FFFFFF)
@@ -302,7 +304,7 @@ private fun ConfirmDialog(
             TextButton(onClick = onConfirm) {
                 Text(
                     text = confirmText,
-                    fontFamily = FontFamilySyne,
+                    fontFamily = FontFamilyIBM,
                     fontWeight = FontWeight.SemiBold,
                     color = confirmColor
                 )
@@ -312,7 +314,7 @@ private fun ConfirmDialog(
             TextButton(onClick = onDismiss) {
                 Text(
                     text = "Cancel",
-                    fontFamily = FontFamilySyne,
+                    fontFamily = FontFamilyIBM,
                     fontWeight = FontWeight.SemiBold,
                     color = Color(0xFF3B82F6)
                 )

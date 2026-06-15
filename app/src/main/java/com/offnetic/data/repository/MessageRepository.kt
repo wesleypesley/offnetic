@@ -14,6 +14,7 @@ interface MessageRepository {
     suspend fun getUnreadCount(chatId: String, myPublicKey: String): Result<Int>
     suspend fun markAsRead(chatId: String, myPublicKey: String): Result<Unit>
     suspend fun deleteAllForChat(chatId: String): Result<Unit>
+    suspend fun deleteById(id: Long): Result<Unit>
     suspend fun getLatestBySession(sessionId: String): Result<Message?>
     suspend fun getLatestTimestamp(chatId: String): Result<Long?>
 }

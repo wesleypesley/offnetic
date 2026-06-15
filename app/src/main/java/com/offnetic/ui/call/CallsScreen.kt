@@ -27,7 +27,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.offnetic.ui.theme.FontFamilySyne
+import com.offnetic.ui.theme.FontFamilyIBM
+import com.offnetic.ui.theme.Spacing
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -52,7 +53,7 @@ fun CallsScreen(
                 Text(
                     "No calls yet",
                     color = Color(0xFF666666),
-                    fontFamily = FontFamilySyne,
+                    fontFamily = FontFamilyIBM,
                     fontSize = 14.sp
                 )
             }
@@ -64,7 +65,7 @@ fun CallsScreen(
                         onClick = { onCallClick(summary.peerPublicKey) }
                     )
                 }
-                item { Spacer(modifier = Modifier.height(16.dp)) }
+                item { Spacer(modifier = Modifier.height(Spacing.lg)) }
             }
         }
     }
@@ -76,12 +77,12 @@ private fun CallRow(summary: CallSummary, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 24.dp, vertical = 12.dp),
+            .padding(horizontal = Spacing.xl, vertical = Spacing.md),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             modifier = Modifier
-                .size(48.dp)
+                .size(Spacing.xxxl)
                 .clip(RoundedCornerShape(24.dp))
                 .background(Color(0xFF141414)),
             contentAlignment = Alignment.Center
@@ -89,23 +90,23 @@ private fun CallRow(summary: CallSummary, onClick: () -> Unit) {
             Text(
                 summary.displayName.take(2).uppercase(),
                 color = Color(0xFF888888),
-                fontFamily = FontFamilySyne,
+                fontFamily = FontFamilyIBM,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold
             )
         }
 
-        Spacer(modifier = Modifier.width(16.dp))
+        Spacer(modifier = Modifier.width(Spacing.lg))
 
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 summary.displayName,
                 color = Color.White,
-                fontFamily = FontFamilySyne,
+                fontFamily = FontFamilyIBM,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Medium
             )
-            Spacer(modifier = Modifier.height(2.dp))
+            Spacer(modifier = Modifier.height(Spacing.xxs))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 val typeIcon = when {
                     summary.lastCallDirection == 2 -> "\u2193" // missed
@@ -119,14 +120,14 @@ private fun CallRow(summary: CallSummary, onClick: () -> Unit) {
                 Text(
                     typeIcon,
                     color = typeColor,
-                    fontFamily = FontFamilySyne,
+                    fontFamily = FontFamilyIBM,
                     fontSize = 14.sp
                 )
-                Spacer(modifier = Modifier.width(4.dp))
+                Spacer(modifier = Modifier.width(Spacing.xs))
                 Text(
                     formatCallType(summary),
                     color = Color(0xFF888888),
-                    fontFamily = FontFamilySyne,
+                    fontFamily = FontFamilyIBM,
                     fontSize = 13.sp
                 )
             }
@@ -135,7 +136,7 @@ private fun CallRow(summary: CallSummary, onClick: () -> Unit) {
         Text(
             formatTimestamp(summary.lastCallTimestamp),
             color = Color(0xFF666666),
-            fontFamily = FontFamilySyne,
+            fontFamily = FontFamilyIBM,
             fontSize = 12.sp
         )
     }

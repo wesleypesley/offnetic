@@ -39,6 +39,7 @@ class NcapForegroundService : Service() {
     private var bluetoothPaused = false
     private var restartJob: kotlinx.coroutines.Job? = null
     private lateinit var pendingIntent: PendingIntent
+    private lateinit var shutdownIntent: PendingIntent
 
     companion object {
         const val CHANNEL_ID = "offnetic_ncap_channel"
@@ -88,10 +89,21 @@ class NcapForegroundService : Service() {
             Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+        shutdownIntent = PendingIntent.getService(
+            this, 1,
+            Intent(this, NcapForegroundService::class.java).apply { action = "com.offnetic.SHUTDOWN" },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
         registerReceiver(bluetoothReceiver, IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED))
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == "com.offnetic.SHUTDOWN") {
+            ncapManager.stopAll()
+            stopSelf()
+            android.os.Process.killProcess(android.os.Process.myPid())
+            return START_NOT_STICKY
+        }
         updateNotification("Listening for contacts")
         startForeground(NOTIFICATION_ID, buildNotification("Listening for contacts"))
 
@@ -138,7 +150,7 @@ class NcapForegroundService : Service() {
             .setContentTitle("Offnetic")
             .setContentText(text)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setContentIntent(pendingIntent)
+            .addAction(0, "Shutdown", shutdownIntent)
             .setOngoing(true)
             .setPriority(Notification.PRIORITY_LOW)
             .build()

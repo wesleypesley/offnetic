@@ -538,6 +538,18 @@ class WebRtcManager(
         }
     }
 
+    fun setSpeakerOff(peerPublicKey: String) {
+        val state = getCallState(peerPublicKey)
+        state.update { it.copy(isSpeakerOn = false) }
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+        try {
+            @Suppress("DEPRECATION")
+            audioManager.isSpeakerphoneOn = false
+        } catch (e: Exception) {
+            android.util.Log.e("offCall", "setSpeakerOff failed: ${e.message}")
+        }
+    }
+
     fun toggleCamera(peerPublicKey: String) {
         val state = getCallState(peerPublicKey)
         val isCameraOn = !state.value.isCameraOn
@@ -846,6 +858,11 @@ class WebRtcManager(
                     android.util.Log.e("offCall", "onAddTrack kind=${track.kind()} enabled=${track.enabled()} for ${peerPublicKey.take(8)}")
                     if (track is VideoTrack) {
                         remoteVideoTracks.getOrPut(peerPublicKey) { mutableListOf() }.add(track)
+                        val remoteProxy = remoteProxies[peerPublicKey]
+                        if (remoteProxy != null) {
+                            track.addSink(remoteProxy)
+                            android.util.Log.e("offCall", "onAddTrack bound remote track to existing proxy for ${peerPublicKey.take(8)}")
+                        }
                         synchronized(pendingRemoteRenderers) {
                             val pending = pendingRemoteRenderers[peerPublicKey]
                             android.util.Log.e("offCall", "onAddTrack VIDEO pending=${pending?.size ?: 0} for ${peerPublicKey.take(8)}")
@@ -859,7 +876,14 @@ class WebRtcManager(
                     }
                 }
             }
-            override fun onRemoveTrack(p0: org.webrtc.RtpReceiver?) {}
+            override fun onRemoveTrack(p0: org.webrtc.RtpReceiver?) {
+                val track = p0?.track() as? VideoTrack ?: return
+                android.util.Log.e("offCall", "onRemoveTrack kind=${track.kind()} for ${peerPublicKey.take(8)}")
+                remoteVideoTracks[peerPublicKey]?.remove(track)
+                remoteProxies[peerPublicKey]?.let { proxy ->
+                    track.removeSink(proxy)
+                }
+            }
         }
     }
 

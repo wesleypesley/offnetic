@@ -21,6 +21,7 @@ data class Message(
         const val TYPE_IMAGE = 3
         const val TYPE_VIDEO = 4
         const val TYPE_SYSTEM = 5
+        const val TYPE_CANCELLED = 6
 
         fun fromEntity(entity: com.offnetic.data.local.db.entity.Message): Message {
             return Message(

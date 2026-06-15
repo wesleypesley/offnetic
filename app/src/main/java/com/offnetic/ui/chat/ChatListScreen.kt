@@ -1,6 +1,5 @@
 package com.offnetic.ui.chat
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -20,6 +19,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
+import androidx.compose.ui.res.painterResource
+import com.offnetic.R
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -31,14 +33,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.offnetic.ui.theme.FontFamilyIBM
+import com.offnetic.ui.theme.Spacing
 import com.offnetic.ui.theme.FontFamilySyne
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -93,7 +95,7 @@ fun ChatListContent(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .padding(horizontal = 24.dp)
+                .padding(horizontal = Spacing.xl)
         ) {
             if (chatSummaries.isEmpty()) {
                 item {
@@ -140,16 +142,16 @@ private fun ProfileDialog(
             Column {
                 Text(
                     text = "Username",
-                    fontFamily = FontFamilySyne,
+                    fontFamily = FontFamilyIBM,
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 11.sp,
                     letterSpacing = 1.5.sp,
                     color = Color(0x40FFFFFF)
                 )
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(Spacing.sm))
                 Text(
                     text = displayName,
-                    fontFamily = FontFamilySyne,
+                    fontFamily = FontFamilyIBM,
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 18.sp,
                     color = Color.White
@@ -160,7 +162,7 @@ private fun ProfileDialog(
             androidx.compose.material3.TextButton(onClick = onDismiss) {
                 Text(
                     text = "Close",
-                    fontFamily = FontFamilySyne,
+                    fontFamily = FontFamilyIBM,
                     fontWeight = FontWeight.SemiBold,
                     color = Color(0xFF3B82F6)
                 )
@@ -180,7 +182,7 @@ private fun Header(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 12.dp)
+            .padding(start = Spacing.xl, end = Spacing.xl, top = Spacing.xl, bottom = Spacing.md)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -198,17 +200,17 @@ private fun Header(
                 )
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(top = 2.dp)
+                    modifier = Modifier.padding(top = Spacing.xxs)
                 ) {
                     Box(
                         modifier = Modifier
                             .size(5.dp)
                             .background(Color(0xFF4ADE80), CircleShape)
                     )
-                    Spacer(modifier = Modifier.width(5.dp))
+                    Spacer(modifier = Modifier.width(Spacing.sm))
                     Text(
                         text = if (isDiscovering) "Discovering nearby" else "Offline",
-                        fontFamily = FontFamilySyne,
+                        fontFamily = FontFamilyIBM,
                         fontWeight = FontWeight.Medium,
                         fontSize = 12.sp,
                         color = Color(0x4DFFFFFF)
@@ -216,7 +218,7 @@ private fun Header(
                 }
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 QrButton(onClick = onScanQr)
                 ShutdownButton(onClick = onShutdown)
                 GearButton(onClick = onShowProfile)
@@ -235,31 +237,12 @@ private fun QrButton(onClick: () -> Unit) {
         color = Color(0x12FFFFFF)
     ) {
         Box(contentAlignment = Alignment.Center) {
-            Canvas(modifier = Modifier.size(18.dp)) {
-                val s = Stroke(width = 1.5f)
-                val strokeColor = Color(0xB3FFFFFF)
-                val cw = size.width
-                val cell = cw / 7f
-                val cornerR = cell * 0.35f
-
-                fun drawCell(col: Int, row: Int, filled: Boolean) {
-                    if (filled) {
-                        drawRoundRect(
-                            color = strokeColor,
-                            topLeft = Offset(col * cell * 2f, row * cell * 2f),
-                            size = androidx.compose.ui.geometry.Size(cell, cell),
-                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(cornerR, cornerR),
-                            style = s
-                        )
-                    }
-                }
-
-                drawRoundRect(color = strokeColor, topLeft = Offset(cell, cell), size = androidx.compose.ui.geometry.Size(cell * 5f, cell * 5f), cornerRadius = androidx.compose.ui.geometry.CornerRadius(cornerR, cornerR), style = s)
-                drawRoundRect(color = strokeColor, topLeft = Offset(cell * 2f, cell * 2f), size = androidx.compose.ui.geometry.Size(cell * 3f, cell * 3f), cornerRadius = androidx.compose.ui.geometry.CornerRadius(cornerR, cornerR), style = s)
-
-                drawCell(1, 1, true); drawCell(2, 1, true); drawCell(1, 2, true)
-                drawCell(1, 1, true); drawCell(2, 2, true)
-            }
+            Icon(
+                painter = painterResource(R.drawable.ic_qr_code_scanner),
+                contentDescription = "Scan QR",
+                tint = Color(0xB3FFFFFF),
+                modifier = Modifier.size(20.dp)
+            )
         }
     }
 }
@@ -274,7 +257,7 @@ private fun AvatarInitial(initial: String) {
         Box(contentAlignment = Alignment.Center) {
             Text(
                 text = initial,
-                fontFamily = FontFamilySyne,
+                fontFamily = FontFamilyIBM,
                 fontWeight = FontWeight.Bold,
                 fontSize = 14.sp,
                 color = Color(0xB3FFFFFF)
@@ -293,33 +276,12 @@ private fun ShutdownButton(onClick: () -> Unit) {
         color = Color(0x1AEF4444)
     ) {
         Box(contentAlignment = Alignment.Center) {
-            Canvas(modifier = Modifier.size(16.dp)) {
-                val strokeWidth = 2.5f
-                val stroke = Stroke(width = strokeWidth)
-                val color = Color(0xFFEF4444)
-                val cx = size.width / 2f
-                val cy = size.height / 2f
-                val gap = size.height * 0.08f
-                val top = size.height * 0.12f
-                val bottom = cy + gap
-
-                drawLine(
-                    color = color,
-                    start = Offset(cx, top),
-                    end = Offset(cx, bottom),
-                    strokeWidth = strokeWidth
-                )
-                val arcRadius = size.width * 0.32f
-                drawArc(
-                    color = color,
-                    startAngle = 140f,
-                    sweepAngle = 260f,
-                    useCenter = false,
-                    topLeft = Offset(cx - arcRadius, cy - arcRadius + gap),
-                    size = androidx.compose.ui.geometry.Size(arcRadius * 2f, arcRadius * 2f),
-                    style = stroke
-                )
-            }
+            Icon(
+                painter = painterResource(R.drawable.ic_power_settings_new),
+                contentDescription = "Shutdown",
+                tint = Color(0xFFEF4444),
+                modifier = Modifier.size(20.dp)
+            )
         }
     }
 }
@@ -334,29 +296,12 @@ private fun GearButton(onClick: () -> Unit) {
         color = Color(0x12FFFFFF)
     ) {
         Box(contentAlignment = Alignment.Center) {
-            Canvas(modifier = Modifier.size(17.dp)) {
-                val color = Color(0xB3FFFFFF)
-                val strokeWidth = 1.8f
-                val stroke = Stroke(width = strokeWidth)
-                val cx = size.width / 2f
-                val cy = size.height / 2f
-                val outerR = size.width * 0.44f
-                val innerR = size.width * 0.2f
-                val teethLen = size.width * 0.08f
-                val teethCount = 8
-                for (i in 0 until teethCount) {
-                    val angle = Math.toRadians((i * 360.0 / teethCount).toDouble())
-                    val cos = kotlin.math.cos(angle).toFloat()
-                    val sin = kotlin.math.sin(angle).toFloat()
-                    val x1 = cx + cos * (outerR - teethLen)
-                    val y1 = cy + sin * (outerR - teethLen)
-                    val x2 = cx + cos * (outerR + teethLen)
-                    val y2 = cy + sin * (outerR + teethLen)
-                    drawLine(color, Offset(x1, y1), Offset(x2, y2), strokeWidth)
-                }
-                drawCircle(color = color, radius = outerR, center = Offset(cx, cy), style = stroke)
-                drawCircle(color = color, radius = innerR, center = Offset(cx, cy), style = stroke)
-            }
+            Icon(
+                painter = painterResource(R.drawable.ic_settings),
+                contentDescription = "Settings",
+                tint = Color(0xB3FFFFFF),
+                modifier = Modifier.size(20.dp)
+            )
         }
     }
 }
@@ -366,12 +311,12 @@ private fun EmptyState() {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 48.dp),
+            .padding(vertical = Spacing.xxxl),
         contentAlignment = Alignment.Center
     ) {
         Text(
             text = "No conversations yet",
-            fontFamily = FontFamilySyne,
+            fontFamily = FontFamilyIBM,
             fontWeight = FontWeight.Medium,
             fontSize = 15.sp,
             color = Color(0x40FFFFFF)
@@ -388,7 +333,7 @@ private fun ChatListItem(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onClick() }
-            .padding(vertical = 12.dp, horizontal = 0.dp),
+            .padding(vertical = Spacing.md, horizontal = 0.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Surface(
@@ -399,7 +344,7 @@ private fun ChatListItem(
             Box(contentAlignment = Alignment.Center) {
                 Text(
                     text = summary.displayName.take(2).uppercase(),
-                    fontFamily = FontFamilySyne,
+                    fontFamily = FontFamilyIBM,
                     fontWeight = FontWeight.Bold,
                     fontSize = 17.sp,
                     color = Color(0x99FFFFFF)
@@ -407,7 +352,7 @@ private fun ChatListItem(
             }
         }
 
-        Spacer(modifier = Modifier.width(14.dp))
+        Spacer(modifier = Modifier.width(Spacing.md))
 
         Column(modifier = Modifier.weight(1f)) {
             Row(
@@ -425,11 +370,11 @@ private fun ChatListItem(
                                 .size(6.dp)
                                 .background(Color(0xFF4ADE80), CircleShape)
                         )
-                        Spacer(modifier = Modifier.width(5.dp))
+                        Spacer(modifier = Modifier.width(Spacing.sm))
                     }
                     Text(
                         text = summary.displayName,
-                        fontFamily = FontFamilySyne,
+                        fontFamily = FontFamilyIBM,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 15.sp,
                         color = Color.White,
@@ -440,16 +385,16 @@ private fun ChatListItem(
                 }
                 Text(
                     text = formatTimestamp(summary.lastTimestamp),
-                    fontFamily = FontFamilySyne,
+                    fontFamily = FontFamilyIBM,
                     fontWeight = FontWeight.Medium,
                     fontSize = 11.sp,
                     color = Color(0x40FFFFFF)
                 )
             }
-            Spacer(modifier = Modifier.height(2.dp))
+            Spacer(modifier = Modifier.height(Spacing.xxs))
             Text(
                 text = summary.lastMessage,
-                fontFamily = FontFamilySyne,
+                fontFamily = FontFamilyIBM,
                 fontWeight = FontWeight.Medium,
                 fontSize = 13.sp,
                 color = Color(0x4DFFFFFF),

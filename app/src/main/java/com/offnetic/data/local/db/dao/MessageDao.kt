@@ -40,6 +40,9 @@ interface MessageDao {
     @Query("DELETE FROM messages WHERE chatId = :chatId")
     suspend fun deleteAllForChat(chatId: String)
 
+    @Query("DELETE FROM messages WHERE id = :id")
+    suspend fun deleteById(id: Long)
+
     @Query("SELECT * FROM messages WHERE sessionId = :sessionId ORDER BY timestamp DESC LIMIT 1")
     suspend fun getLatestBySession(sessionId: String): Message?
 

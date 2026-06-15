@@ -17,7 +17,7 @@ data class CallState(
     val connectedAt: Long = 0L,
     val error: String? = null,
     val isMuted: Boolean = false,
-    val isSpeakerOn: Boolean = true,
-    val isCameraOn: Boolean = true,
+    val isSpeakerOn: Boolean = false,
+    val isCameraOn: Boolean = false,
     val isFrontCamera: Boolean = true
 )

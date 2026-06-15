@@ -31,7 +31,7 @@ class VoiceNoteRecorder @Inject constructor(
     fun startRecording(): File {
         if (isRecording) throw IllegalStateException("Already recording")
 
-        outputFile = File(context.filesDir, "voice_${System.currentTimeMillis()}.aac")
+        outputFile = File(context.filesDir, "voice_${System.currentTimeMillis()}.m4a")
 
         recorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             MediaRecorder(context)
@@ -40,7 +40,7 @@ class VoiceNoteRecorder @Inject constructor(
             MediaRecorder()
         }.apply {
             setAudioSource(MediaRecorder.AudioSource.MIC)
-            setOutputFormat(MediaRecorder.OutputFormat.AAC_ADTS)
+            setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
             setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
             setAudioSamplingRate(16000)
             setAudioEncodingBitRate(32000)

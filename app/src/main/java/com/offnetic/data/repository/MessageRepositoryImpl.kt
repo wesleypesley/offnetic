@@ -60,6 +60,11 @@ class MessageRepositoryImpl @Inject constructor(
         catch (e: Exception) { Result.Error("Failed to delete messages for chat", e) }
     }
 
+    override suspend fun deleteById(id: Long): Result<Unit> {
+        return try { messageDao.deleteById(id); Result.Success(Unit) }
+        catch (e: Exception) { Result.Error("Failed to delete message", e) }
+    }
+
     override suspend fun getLatestBySession(sessionId: String): Result<Message?> {
         return try {
             val entity = messageDao.getLatestBySession(sessionId)

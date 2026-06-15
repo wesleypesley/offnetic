@@ -179,6 +179,10 @@ class CallViewModel @AssistedInject constructor(
         webRtcManager.setSpeakerOn(peerPublicKey)
     }
 
+    fun setSpeakerOff(peerPublicKey: String) {
+        webRtcManager.setSpeakerOff(peerPublicKey)
+    }
+
     fun setCameraEnabled(enabled: Boolean) {
         cameraEnabled = enabled
         webRtcManager.setCameraEnabled(peerPublicKey, enabled)
@@ -194,7 +198,8 @@ class CallViewModel @AssistedInject constructor(
     }
 
     private suspend fun handleCallSignal(signal: CallSignal) {
-        if (signal.type != NcapEnvelope.PayloadType.CALL_OFFER && signal.timestamp < callStartTime) {
+        if (signal.type != NcapEnvelope.PayloadType.CALL_OFFER
+            && signal.timestamp < callStartTime) {
             android.util.Log.e("offCall", "handleCallSignal SKIP stale ${signal.type} ts=${signal.timestamp} start=$callStartTime")
             return
         }

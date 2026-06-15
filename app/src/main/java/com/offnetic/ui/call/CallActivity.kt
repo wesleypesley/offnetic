@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.view.View
 import android.view.WindowManager
 import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -47,18 +48,21 @@ class CallActivity : ComponentActivity() {
     private lateinit var acceptBtn: ImageButton
     private lateinit var declineBtn: ImageButton
     private lateinit var toggleMicBtn: ImageButton
+    private lateinit var micSlash: View
     private lateinit var toggleCameraBtn: ImageButton
+    private lateinit var cameraSlash: View
     private lateinit var flipCameraBtn: ImageButton
     private lateinit var hangupBtn: ImageButton
     private lateinit var toggleSpeakerBtn: ImageButton
+    private lateinit var cameraOffOverlay: View
+    private lateinit var cameraOffNameTv: TextView
 
     private var peerPublicKey: String = ""
     private var isIncoming: Boolean = false
     private var pipVisible: Boolean = false
     private var cameraEnabled: Boolean = false
-    private var micMuted: Boolean = false
-    private var speakerOn: Boolean = false
     private var swapped: Boolean = false
+    private var pendingCameraEnable: Boolean = false
 
     private val cameraPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -72,7 +76,7 @@ class CallActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        // window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContentView(R.layout.activity_call)
 
@@ -116,8 +120,16 @@ class CallActivity : ComponentActivity() {
             callViewModel.setCameraEnabled(true)
             pipVisible = true
             pipRenderer.visibility = View.VISIBLE
+            cameraSlash.visibility = View.GONE
             toggleCameraBtn.setColorFilter(0xFFFFFFFF.toInt())
             flipCameraBtn.visibility = View.VISIBLE
+        } else if (!cameraEnabled && pendingCameraEnable) {
+            pendingCameraEnable = false
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+                == PackageManager.PERMISSION_GRANTED
+            ) {
+                enableCamera()
+            }
         }
     }
 
@@ -132,10 +144,14 @@ class CallActivity : ComponentActivity() {
         acceptBtn = findViewById(R.id.accept_button)
         declineBtn = findViewById(R.id.decline_button)
         toggleMicBtn = findViewById(R.id.toggle_mic_button)
+        micSlash = findViewById(R.id.mic_slash)
         toggleCameraBtn = findViewById(R.id.toggle_camera_button)
+        cameraSlash = findViewById(R.id.camera_slash)
         flipCameraBtn = findViewById(R.id.flip_camera_button)
         hangupBtn = findViewById(R.id.hangup_button)
         toggleSpeakerBtn = findViewById(R.id.toggle_speaker_button)
+        cameraOffOverlay = findViewById(R.id.camera_off_overlay)
+        cameraOffNameTv = findViewById(R.id.camera_off_name)
 
         webRtcManager.initSurface(fullscreenRenderer)
         fullscreenRenderer.setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FILL)
@@ -174,16 +190,19 @@ class CallActivity : ComponentActivity() {
         finished = false
         callActive = false
         cameraEnabled = false
-        micMuted = false
-        speakerOn = true
-        callViewModel.setSpeakerOn(peerPublicKey)
+        callViewModel.setSpeakerOff(peerPublicKey)
         swapped = false
         pipVisible = false
+        pendingCameraEnable = false
         pipRenderer.visibility = View.INVISIBLE
         fullscreenRenderer.visibility = View.INVISIBLE
+        cameraOffOverlay.visibility = View.GONE
         toggleCameraBtn.setColorFilter(0x40FFFFFF)
+        cameraSlash.visibility = View.VISIBLE
         flipCameraBtn.visibility = View.GONE
         toggleMicBtn.setColorFilter(0xFFFFFFFF.toInt())
+        micSlash.visibility = View.GONE
+        toggleSpeakerBtn.setImageResource(R.drawable.ic_call_speaker)
         toggleSpeakerBtn.setColorFilter(0xFFFFFFFF.toInt())
 
         scope.launch {
@@ -191,6 +210,7 @@ class CallActivity : ComponentActivity() {
             val displayName = contact?.displayName ?: peerPublicKey.take(12)
 
             peerNameTv.text = displayName
+            cameraOffNameTv.text = displayName
 
             if (isIncoming) {
                 callViewModel.acceptIncomingCall(peerPublicKey, displayName)
@@ -285,8 +305,25 @@ class CallActivity : ComponentActivity() {
                 finishRunnable?.let { fullscreenRenderer.removeCallbacks(it) }
                 finishRunnable = Runnable { finish() }
                 fullscreenRenderer.postDelayed(finishRunnable!!, 1500L)
+                cameraOffOverlay.visibility = View.GONE
             }
         }
+
+        if (state.phase == CallPhase.CONNECTED) {
+            if (state.isCameraOn) {
+                cameraOffOverlay.visibility = View.GONE
+            } else {
+                cameraOffOverlay.visibility = View.VISIBLE
+            }
+        } else if (state.phase != CallPhase.ENDED) {
+            cameraOffOverlay.visibility = View.GONE
+        }
+
+        micSlash.visibility = if (state.isMuted) View.VISIBLE else View.GONE
+        toggleMicBtn.setColorFilter(if (state.isMuted) 0x40FFFFFF else 0xFFFFFFFF.toInt())
+
+        toggleSpeakerBtn.setImageResource(if (state.isSpeakerOn) R.drawable.ic_call_speaker else R.drawable.ic_call_earpiece)
+        toggleSpeakerBtn.setColorFilter(if (state.isSpeakerOn) 0xFFFFFFFF.toInt() else 0x40FFFFFF)
     }
 
     private fun updateVideoFeeds() {
@@ -333,6 +370,7 @@ class CallActivity : ComponentActivity() {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
                 != PackageManager.PERMISSION_GRANTED
             ) {
+                pendingCameraEnable = true
                 cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
                 return
             }
@@ -346,11 +384,13 @@ class CallActivity : ComponentActivity() {
         android.util.Log.e("offCall", "enableCamera tracksBound=$tracksBound pipVisible=$pipVisible")
         cameraEnabled = true
         callViewModel.setCameraEnabled(true)
+        cameraSlash.visibility = View.GONE
         toggleCameraBtn.setColorFilter(0xFFFFFFFF.toInt())
         flipCameraBtn.visibility = View.VISIBLE
-        if (!pipVisible) {
+        if (tracksBound && !pipVisible) {
             pipVisible = true
             pipRenderer.visibility = View.VISIBLE
+            updateVideoFeeds()
         }
     }
 
@@ -358,6 +398,7 @@ class CallActivity : ComponentActivity() {
         android.util.Log.e("offCall", "disableCamera")
         cameraEnabled = false
         callViewModel.setCameraEnabled(false)
+        cameraSlash.visibility = View.VISIBLE
         toggleCameraBtn.setColorFilter(0x40FFFFFF)
         flipCameraBtn.visibility = View.GONE
         pipVisible = false
@@ -365,15 +406,11 @@ class CallActivity : ComponentActivity() {
     }
 
     private fun toggleMic() {
-        micMuted = !micMuted
         callViewModel.toggleMute()
-        toggleMicBtn.setColorFilter(if (micMuted) 0x40FFFFFF else 0xFFFFFFFF.toInt())
     }
 
     private fun toggleSpeaker() {
-        speakerOn = !speakerOn
         callViewModel.toggleSpeaker()
-        toggleSpeakerBtn.setColorFilter(if (speakerOn) 0xFFFFFFFF.toInt() else 0x40FFFFFF)
     }
 
     private fun flipCamera() {

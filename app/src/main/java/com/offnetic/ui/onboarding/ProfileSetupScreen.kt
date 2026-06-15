@@ -27,6 +27,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.offnetic.ui.theme.FontFamilySyne
+import com.offnetic.ui.theme.Spacing
 import androidx.hilt.navigation.compose.hiltViewModel
 
 private val USERNAME_REGEX = Regex("^[a-zA-Z0-9_]{2,24}$")
@@ -61,7 +62,7 @@ fun ProfileSetupScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 32.dp),
+                .padding(horizontal = Spacing.xxl),
             verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center
         ) {
             Text(
@@ -73,7 +74,7 @@ fun ProfileSetupScreen(
                 color = Color(0x4DFFFFFF)
             )
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(Spacing.xl))
 
             Text(
                 text = "How should people see you?",
@@ -85,7 +86,7 @@ fun ProfileSetupScreen(
                 lineHeight = 40.sp
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(Spacing.sm))
 
             Text(
                 text = "Your name is only visible to trusted contacts you\u2019ve paired with.",
@@ -96,7 +97,7 @@ fun ProfileSetupScreen(
                 lineHeight = 25.sp
             )
 
-            Spacer(modifier = Modifier.height(40.dp))
+            Spacer(modifier = Modifier.height(Spacing.xxxl))
 
             Text(
                 text = "USERNAME",
@@ -107,7 +108,7 @@ fun ProfileSetupScreen(
                 color = Color(0x4DFFFFFF)
             )
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(Spacing.md))
 
             OutlinedTextField(
                 value = username,
@@ -155,7 +156,7 @@ fun ProfileSetupScreen(
                                 color = Color(0x33FFFFFF)
                             )
                         }
-                        Spacer(modifier = Modifier.height(4.dp))
+                        Spacer(modifier = Modifier.height(Spacing.xs))
                         Text(
                             text = "\u26A0 This cannot be changed later.",
                             fontFamily = FontFamilySyne,
@@ -194,7 +195,7 @@ fun ProfileSetupScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(48.dp))
+            Spacer(modifier = Modifier.height(Spacing.xxxl))
         }
     }
 }

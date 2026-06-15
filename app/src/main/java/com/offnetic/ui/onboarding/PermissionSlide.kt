@@ -42,6 +42,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.offnetic.ui.theme.FontFamilySyne
+import com.offnetic.ui.theme.Spacing
 
 private val permConfigs = listOf(
     PermConfig(
@@ -134,7 +135,7 @@ fun PermissionSlide(
         Column(
             modifier = Modifier.fillMaxSize()
         ) {
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(Spacing.xl))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -150,14 +151,14 @@ fun PermissionSlide(
                             .clip(RoundedCornerShape(3.dp))
                             .background(if (i == index) Color.White else Color(0x2DFFFFFF))
                     )
-                    if (i < 2) Spacer(modifier = Modifier.width(6.dp))
+                    if (i < 2) Spacer(modifier = Modifier.width(Spacing.sm))
                 }
             }
 
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .padding(horizontal = 32.dp),
+                    .padding(horizontal = Spacing.xxl),
                 verticalArrangement = Arrangement.Center
             ) {
                 Text(
@@ -169,7 +170,7 @@ fun PermissionSlide(
                     color = Color(0x4DFFFFFF)
                 )
 
-                Spacer(modifier = Modifier.height(28.dp))
+                Spacer(modifier = Modifier.height(Spacing.xxl))
 
                 val iconColor = Color(0xE6FFFFFF)
                 Canvas(modifier = Modifier.size(44.dp)) {
@@ -215,7 +216,7 @@ fun PermissionSlide(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(Spacing.xl))
 
                 Text(
                     text = config.title,
@@ -227,7 +228,7 @@ fun PermissionSlide(
                     letterSpacing = (-1).sp
                 )
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(Spacing.lg))
 
                 Text(
                     text = config.desc,
@@ -238,14 +239,14 @@ fun PermissionSlide(
                     lineHeight = 25.sp
                 )
 
-                Spacer(modifier = Modifier.height(28.dp))
+                Spacer(modifier = Modifier.height(Spacing.xxl))
 
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     config.perms.forEach { p ->
                         Box(
                             modifier = Modifier
                                 .border(1.dp, Color(0x1FFFFFFF), RoundedCornerShape(20.dp))
-                                .padding(horizontal = 12.dp, vertical = 5.dp)
+                                .padding(horizontal = Spacing.md, vertical = Spacing.sm)
                         ) {
                             Text(
                                 text = p,
@@ -261,7 +262,7 @@ fun PermissionSlide(
             }
 
             Column(
-                modifier = Modifier.padding(horizontal = 32.dp, vertical = 48.dp)
+                modifier = Modifier.padding(horizontal = Spacing.xxl, vertical = Spacing.xxxl)
             ) {
                 Button(
                     onClick = {
@@ -288,7 +289,7 @@ fun PermissionSlide(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(Spacing.md))
 
                 Text(
                     text = "You can change this anytime in Settings",

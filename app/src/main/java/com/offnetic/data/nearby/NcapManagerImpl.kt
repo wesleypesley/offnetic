@@ -1,7 +1,10 @@
 package com.offnetic.data.nearby
 
+import android.content.ContentValues
 import android.content.Context
 import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import com.google.android.gms.nearby.connection.AdvertisingOptions
 import com.google.android.gms.nearby.connection.ConnectionInfo
 import com.google.android.gms.nearby.connection.ConnectionLifecycleCallback
@@ -75,6 +78,8 @@ class NcapManagerImpl @Inject constructor(
 
     private val _nearbyState = MutableStateFlow<NearbyState>(NearbyState.Idle)
     override val nearbyState: StateFlow<NearbyState> = _nearbyState.asStateFlow()
+    private val _locationRequired = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    override val locationRequired: SharedFlow<Unit> = _locationRequired.asSharedFlow()
 
     private val _incomingMessages = MutableSharedFlow<com.offnetic.domain.model.Message>(
         replay = 0, extraBufferCapacity = 64
@@ -93,6 +98,7 @@ class NcapManagerImpl @Inject constructor(
     private var currentAdvertisingName: String = ""
     @Volatile private var callActiveCount = 0
     private val deferredFilePayloads = ConcurrentHashMap<Long, Pair<String, Payload>>()
+    private val processedFilePayloads = ConcurrentHashMap.newKeySet<Long>()
 
     override suspend fun getMyPublicKey(): String {
         return identityDao.getIdentity()?.publicKey ?: ""
@@ -350,8 +356,9 @@ class NcapManagerImpl @Inject constructor(
                 android.provider.Settings.Secure.getInt(context.contentResolver, android.provider.Settings.Secure.LOCATION_MODE) != android.provider.Settings.Secure.LOCATION_MODE_OFF
             }
             if (!locationEnabled) {
-                android.util.Log.e("NcapConn", "startDiscovery: Location is OFF — NCAPI discovery will fail. Enable Location in Settings.")
-                _nearbyState.value = NearbyState.Error("Location must be enabled for peer discovery")
+                android.util.Log.e("NcapConn", "startDiscovery: Location is OFF — NCAPI discovery will fail.")
+                _nearbyState.value = NearbyState.Idle
+                _locationRequired.tryEmit(Unit)
                 return
             }
         } catch (_: Exception) {}
@@ -605,6 +612,8 @@ class NcapManagerImpl @Inject constructor(
             payload = metaJson.toString().toByteArray(Charsets.UTF_8)
         )
         sendPayload(endpointId, metaEnvelope.toBytes())
+
+        kotlinx.coroutines.delay(500L)
 
         // Suspend until the transfer completes (SUCCESS) or fails (FAILURE/CANCELED),
         // reported via onPayloadTransferUpdate.
@@ -1049,9 +1058,14 @@ class NcapManagerImpl @Inject constructor(
     }
 
     private suspend fun handleIncomingFile(endpointId: String, senderPublicKey: String, payload: Payload) {
+        if (!processedFilePayloads.add(payload.id)) {
+            android.util.Log.e("NcapFile", "handleIncomingFile: payloadId=${payload.id} ALREADY PROCESSED — skipping duplicate")
+            return
+        }
         if (callActiveCount > 0) {
             android.util.Log.e("NcapFile", "handleIncomingFile: call active (count=$callActiveCount), deferring payloadId=${payload.id}")
             deferredFilePayloads[payload.id] = Pair(endpointId, payload)
+            processedFilePayloads.remove(payload.id)
             return
         }
         handleIncomingFileInternal(endpointId, senderPublicKey, payload)
@@ -1070,35 +1084,50 @@ class NcapManagerImpl @Inject constructor(
 
         val savedPath: String? = kotlinx.coroutines.withContext(Dispatchers.IO) {
             try {
+                // First copy NCAPI's data into a temp internal file we can read back.
+                val tmpFile = java.io.File(context.filesDir, "tmp_${timestamp}_$fileName")
+                val metaFileSize = meta?.fileSize ?: 0L
+                var copiedOk = false
+                val ncapiUri = filePayload.asUri()
+                if (ncapiUri != null) {
+                    context.contentResolver.openInputStream(ncapiUri)?.use { input ->
+                        tmpFile.outputStream().use { out -> input.copyTo(out) }
+                    }
+                    copiedOk = tmpFile.length() > 0 && (metaFileSize == 0L || tmpFile.length() >= metaFileSize * 0.95)
+                }
+                if (!copiedOk) {
+                    val javaFile = filePayload.asJavaFile()
+                    if (javaFile != null && javaFile.exists() && javaFile.length() > 0) {
+                        if (!javaFile.renameTo(tmpFile)) {
+                            javaFile.copyTo(tmpFile, overwrite = true)
+                        }
+                        copiedOk = tmpFile.length() > 0
+                    }
+                }
+                if (!copiedOk || tmpFile.length() == 0L) {
+                    android.util.Log.e("NcapFile", "handleIncomingFile: cannot read file data for $fileName")
+                    tmpFile.delete()
+                    return@withContext null
+                }
+                android.util.Log.e("NcapFile", "handleIncomingFile: temp copy ok size=${tmpFile.length()}")
+
+                // Save to public storage so files appear in Gallery / file manager.
+                val publicPath = saveToPublicStorage(fileName, mimeType, tmpFile)
+                if (publicPath != null) {
+                    tmpFile.delete()
+                    return@withContext publicPath
+                }
+
+                // Fallback: keep in internal received_files/ (API 28 or MediaStore failure).
                 val destDir = java.io.File(context.filesDir, "received_files")
                 destDir.mkdirs()
                 val destFile = java.io.File(destDir, "${timestamp}_$fileName")
-                val tmpFile = filePayload.asJavaFile()
-                android.util.Log.e("NcapFile", "handleIncomingFile: saving $fileName — asJavaFile=${tmpFile != null} exists=${tmpFile?.exists()}")
-                if (tmpFile != null && tmpFile.exists()) {
-                    if (!tmpFile.renameTo(destFile)) {
-                        tmpFile.copyTo(destFile, overwrite = true)
-                        tmpFile.delete()
-                    }
-                    android.util.Log.e("NcapFile", "handleIncomingFile: saved via JavaFile to ${destFile.absolutePath} (size=${destFile.length()})")
-                    destFile.absolutePath
-                } else {
-                    val uri = filePayload.asUri()
-                    android.util.Log.e("NcapFile", "handleIncomingFile: asJavaFile null/not-exists, trying URI — uri=$uri")
-                    if (uri != null) {
-                        context.contentResolver.openInputStream(uri)?.use { input ->
-                            destFile.outputStream().use { output -> input.copyTo(output) }
-                            android.util.Log.e("NcapFile", "handleIncomingFile: saved via URI to ${destFile.absolutePath} (size=${destFile.length()})")
-                        } ?: run {
-                            android.util.Log.e("NcapFile", "handleIncomingFile: openInputStream returned null for $uri")
-                            return@withContext null
-                        }
-                        destFile.absolutePath
-                    } else {
-                        android.util.Log.e("NcapFile", "handleIncomingFile: asUri also null — cannot save $fileName")
-                        null
-                    }
+                if (!tmpFile.renameTo(destFile)) {
+                    tmpFile.copyTo(destFile, overwrite = true)
                 }
+                tmpFile.delete()
+                android.util.Log.e("NcapFile", "handleIncomingFile: fallback to internal ${destFile.absolutePath} (size=${destFile.length()})")
+                destFile.absolutePath
             } catch (e: Exception) {
                 android.util.Log.e("NcapFile", "handleIncomingFile: save failed: ${e.message}", e)
                 null
@@ -1108,15 +1137,28 @@ class NcapManagerImpl @Inject constructor(
         android.util.Log.e("NcapFile", "handleIncomingFile: savedPath=$savedPath mimeType=$mimeType fileName=$fileName")
 
         val isVoiceNote = mimeType.startsWith("audio/")
+        val isMedia = mimeType.startsWith("image/") || mimeType.startsWith("video/")
+        val displayType: Int
+        val displayContent: String
+        if (savedPath == null) {
+            displayType = com.offnetic.data.local.db.entity.Message.TYPE_TEXT
+            displayContent = "Transfer failed: $fileName"
+        } else if (isVoiceNote) {
+            displayType = com.offnetic.data.local.db.entity.Message.TYPE_VOICE_NOTE
+            displayContent = "Voice note  ${meta?.durationLabel ?: ""}".trimEnd()
+        } else {
+            displayType = if (isMedia) {
+                if (mimeType.startsWith("image/")) com.offnetic.data.local.db.entity.Message.TYPE_IMAGE
+                else com.offnetic.data.local.db.entity.Message.TYPE_VIDEO
+            } else com.offnetic.data.local.db.entity.Message.TYPE_FILE
+            displayContent = "File: $fileName"
+        }
         val entity = com.offnetic.data.local.db.entity.Message(
             sessionId = senderPublicKey,
             chatId = senderPublicKey,
             senderPublicKey = senderPublicKey,
-            content = if (isVoiceNote) "Voice note  ${meta?.durationLabel ?: ""}".trimEnd()
-                else if (savedPath == null) "File transfer failed: $fileName"
-                else "File: $fileName",
-            type = if (isVoiceNote) com.offnetic.data.local.db.entity.Message.TYPE_VOICE_NOTE
-                else com.offnetic.data.local.db.entity.Message.TYPE_FILE,
+            content = displayContent,
+            type = displayType,
             timestamp = timestamp,
             isSent = false,
             isRead = false,
@@ -1130,6 +1172,38 @@ class NcapManagerImpl @Inject constructor(
         val message = com.offnetic.domain.model.Message.fromEntity(entity)
         _incomingMessages.emit(message)
         android.util.Log.e("NcapFile", "handleIncomingFile: done — content=${entity.content} type=${entity.type} attachmentPath=${entity.attachmentPath}")
+    }
+
+    private fun saveToPublicStorage(fileName: String, mimeType: String, sourceFile: java.io.File): String? {
+        if (Build.VERSION.SDK_INT < 29) return null
+        if (mimeType.startsWith("audio/")) return null // voice notes stay internal
+        return try {
+            val (collection, relativeDir) = when {
+                mimeType.startsWith("image/") -> MediaStore.Images.Media.EXTERNAL_CONTENT_URI to "Pictures/Offnetic"
+                mimeType.startsWith("video/") -> MediaStore.Video.Media.EXTERNAL_CONTENT_URI to "Movies/Offnetic"
+                mimeType.startsWith("audio/") -> MediaStore.Audio.Media.EXTERNAL_CONTENT_URI to "Music/Offnetic"
+                else -> MediaStore.Downloads.EXTERNAL_CONTENT_URI to "Download/Offnetic"
+            }
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+                put(MediaStore.MediaColumns.RELATIVE_PATH, relativeDir)
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
+            }
+            val uri = context.contentResolver.insert(collection, values) ?: return null
+            context.contentResolver.openOutputStream(uri)?.use { out ->
+                sourceFile.inputStream().use { it.copyTo(out) }
+            } ?: run { context.contentResolver.delete(uri, null, null); return null }
+
+            values.clear()
+            values.put(MediaStore.MediaColumns.IS_PENDING, 0)
+            context.contentResolver.update(uri, values, null, null)
+            android.util.Log.e("NcapFile", "saveToPublicStorage: $fileName → $uri")
+            uri.toString()
+        } catch (e: Exception) {
+            android.util.Log.e("NcapFile", "saveToPublicStorage: failed for $fileName: ${e.message}")
+            null
+        }
     }
 
     private suspend fun handleEndpointFound(endpointId: String, publicKey: String) {

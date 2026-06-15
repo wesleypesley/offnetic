@@ -8,6 +8,7 @@ import android.content.Intent
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.offnetic.MainActivity
+import com.offnetic.R
 import dagger.hilt.android.qualifiers.ApplicationContext
 import timber.log.Timber
 import javax.inject.Inject
@@ -51,7 +52,7 @@ class ProximityPingNotifier @Inject constructor(
         )
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(R.drawable.ic_notification_icon)
             .setContentTitle(displayName)
             .setContentText("A contact is nearby")
             .setContentIntent(pendingIntent)

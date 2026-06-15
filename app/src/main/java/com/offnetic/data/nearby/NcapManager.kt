@@ -29,6 +29,7 @@ interface NcapManager {
     val incomingMessages: SharedFlow<Message>
     val incomingCallSignals: SharedFlow<CallSignal>
     val incomingCallEvents: SharedFlow<String>
+    val locationRequired: SharedFlow<Unit>
 
     fun startAdvertising(name: String)
     fun startDiscovery()

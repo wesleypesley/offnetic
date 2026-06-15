@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- White O letterform (filled ring) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,28 C39.64,28 28,39.64 28,54 C28,68.36 39.64,80 54,80 C68.36,80 80,68.36 80,54 C80,39.64 68.36,28 54,28z M54,34 C65.05,34 74,42.95 74,54 C74,65.05 65.05,74 54,74 C42.95,74 34,65.05 34,54 C34,42.95 42.95,34 54,34z" />
+
+    <!-- Dark inner cutout -->
+    <path
+        android:fillColor="#141A1A"
+        android:pathData="M54,40 C46.27,40 40,46.27 40,54 C40,61.73 46.27,68 54,68 C61.73,68 68,61.73 68,54 C68,46.27 61.73,40 54,40z" />
+
+    <!-- Orbital ring - tilted ellipse -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.2"
+        android:fillColor="#00000000"
+        android:pathData="M80.0,60.9 C76.2,68.3 66.0,75.0 54.0,75.0 C42.0,75.0 31.8,68.3 28.0,60.9 C24.2,53.5 28.0,42.0 42.2,33.9 C56.4,25.8 76.2,33.5 80.0,40.9 C83.8,48.3 83.8,53.5 80.0,60.9z" />
+
+</vector>
