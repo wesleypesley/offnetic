@@ -13,6 +13,7 @@ import com.offnetic.data.nearby.NcapManager
 import com.offnetic.data.nearby.NcapManagerImpl
 import com.offnetic.data.nearby.WifiP2pHandler
 import com.offnetic.util.ProximityPingNotifier
+import com.offnetic.util.MessageNotificationManager
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -38,6 +39,7 @@ object NearbyModule {
         profileDao: ProfileDao,
         prefs: PreferencesRepository,
         proximityPingNotifier: ProximityPingNotifier,
+        messageNotificationManager: MessageNotificationManager,
         signalProtocolManager: SignalProtocolManager,
         messageDao: MessageDao,
         wifiP2pHandler: WifiP2pHandler,
@@ -49,6 +51,7 @@ object NearbyModule {
         profileDao,
         prefs,
         proximityPingNotifier,
+        messageNotificationManager,
         signalProtocolManager,
         messageDao,
         wifiP2pHandler,

@@ -29,6 +29,8 @@ import com.offnetic.domain.model.ConnectionState
 import com.offnetic.domain.model.NearbyState
 import com.offnetic.domain.model.PeerInfo
 import com.offnetic.util.ProximityPingNotifier
+import com.offnetic.util.MessageNotificationManager
+import com.offnetic.service.IncomingCallService
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -58,6 +60,7 @@ class NcapManagerImpl @Inject constructor(
     private val profileDao: ProfileDao,
     private val prefs: PreferencesRepository,
     private val proximityPingNotifier: ProximityPingNotifier,
+    private val messageNotificationManager: MessageNotificationManager,
     private val signalProtocolManager: SignalProtocolManager,
     private val messageDao: MessageDao,
     private val wifiP2pHandler: WifiP2pHandler,
@@ -103,6 +106,8 @@ class NcapManagerImpl @Inject constructor(
     override suspend fun getMyPublicKey(): String {
         return identityDao.getIdentity()?.publicKey ?: ""
     }
+
+    override val isCallActive: Boolean get() = callActiveCount > 0
 
     override fun setCallActive(active: Boolean) {
         val prevActive = callActiveCount > 0
@@ -711,6 +716,7 @@ class NcapManagerImpl @Inject constructor(
             )
             messageDao.insert(entity)
             _incomingMessages.emit(com.offnetic.domain.model.Message.fromEntity(entity))
+            messageNotificationManager.notifyIfNeeded(senderPublicKey)
             Timber.w("Incoming file transfer failed from ${senderPublicKey.take(8)}... (payloadId=$payloadId)")
         }
     }
@@ -872,7 +878,13 @@ class NcapManagerImpl @Inject constructor(
                             val sdpJson = String(envelope.payload, Charsets.UTF_8)
                             WebRtcManager.pendingIncomingOffers[senderPublicKey] = Pair(sdpJson, endpointId)
                             android.util.Log.e("offCall", "CALL_OFFER stored in static cache for ${senderPublicKey.take(8)}")
-                            android.util.Log.e("offCall", "NcapManager emitting incomingCallEvents for ${senderPublicKey.take(8)}")
+                            if (callActiveCount == 0) {
+                                val callIntent = android.content.Intent(context, IncomingCallService::class.java).apply {
+                                    action = IncomingCallService.ACTION_START_RINGING
+                                    putExtra(IncomingCallService.EXTRA_PEER_PUBLIC_KEY, senderPublicKey)
+                                }
+                                context.startForegroundService(callIntent)
+                            }
                             _incomingCallEvents.emit(senderPublicKey)
                         }
                         _incomingCallSignals.emit(
@@ -1054,6 +1066,7 @@ class NcapManagerImpl @Inject constructor(
 
         val message = com.offnetic.domain.model.Message.fromEntity(entity)
         _incomingMessages.emit(message)
+        messageNotificationManager.notifyIfNeeded(senderPublicKey)
         Timber.d("Message decrypted for ${senderPublicKey.take(8)}...")
     }
 
@@ -1171,6 +1184,7 @@ class NcapManagerImpl @Inject constructor(
 
         val message = com.offnetic.domain.model.Message.fromEntity(entity)
         _incomingMessages.emit(message)
+        messageNotificationManager.notifyIfNeeded(senderPublicKey)
         android.util.Log.e("NcapFile", "handleIncomingFile: done — content=${entity.content} type=${entity.type} attachmentPath=${entity.attachmentPath}")
     }
 

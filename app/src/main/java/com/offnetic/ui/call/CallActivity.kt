@@ -1,6 +1,7 @@
 package com.offnetic.ui.call
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.view.View
@@ -16,6 +17,7 @@ import com.offnetic.R
 import com.offnetic.data.local.db.dao.ContactDao
 import com.offnetic.data.nearby.WebRtcManager
 import com.offnetic.domain.model.CallPhase
+import com.offnetic.service.IncomingCallService
 import com.offnetic.ui.navigation.Routes
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
@@ -346,9 +348,19 @@ class CallActivity : ComponentActivity() {
     private var tracksBound = false
     private var callJob: kotlinx.coroutines.Job? = null
 
+    private fun stopIncomingRinging() {
+        try {
+            val stopIntent = Intent(this, IncomingCallService::class.java).apply {
+                action = IncomingCallService.ACTION_STOP_RINGING
+            }
+            startService(stopIntent)
+        } catch (_: Exception) {}
+    }
+
     private fun acceptCall() {
         android.util.Log.e("offCall", "acceptCall tapped phase=${callViewModel.callState.value.phase}")
         if (callViewModel.callState.value.phase != CallPhase.INCOMING) return
+        stopIncomingRinging()
         callViewModel.acceptCall()
         callActive = true
         incomingButtons.visibility = View.GONE
@@ -359,6 +371,7 @@ class CallActivity : ComponentActivity() {
     private fun hangup() {
         if (finished) return
         finished = true
+        stopIncomingRinging()
         android.util.Log.e("offCall", "hangup finished=$finished")
         pipRenderer.visibility = View.INVISIBLE
         fullscreenRenderer.visibility = View.INVISIBLE
@@ -419,6 +432,7 @@ class CallActivity : ComponentActivity() {
 
     override fun onDestroy() {
         android.util.Log.e("offCall", "onDestroy finished=$finished")
+        stopIncomingRinging()
         callJob?.cancel()
         if (!finished && ::callViewModel.isInitialized) {
             callViewModel.hangup()

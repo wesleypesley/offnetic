@@ -13,6 +13,8 @@ import com.offnetic.data.local.db.dao.IdentityDao
 import com.offnetic.data.local.db.dao.MessageDao
 import com.offnetic.data.nearby.NcapManager
 import com.offnetic.ui.navigation.Routes
+import com.offnetic.util.ActiveChatTracker
+import com.offnetic.util.MessageNotificationManager
 import com.offnetic.util.media.VoiceNoteRecorder
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -48,6 +50,8 @@ class ChatViewModel @Inject constructor(
     private val signalProtocolManager: SignalProtocolManager,
     private val ncapManager: NcapManager,
     private val voiceNoteRecorder: VoiceNoteRecorder,
+    private val activeChatTracker: ActiveChatTracker,
+    private val messageNotificationManager: MessageNotificationManager,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -71,6 +75,16 @@ class ChatViewModel @Inject constructor(
     val toastMessage: SharedFlow<String> = _toastMessage
 
     private var recordingGuard = false
+
+    fun setActive() {
+        activeChatTracker.activeChatKey = contactPublicKey
+        messageNotificationManager.dismissForContact(contactPublicKey)
+    }
+    fun clearActive() {
+        if (activeChatTracker.activeChatKey == contactPublicKey) {
+            activeChatTracker.activeChatKey = null
+        }
+    }
 
     val messages: StateFlow<List<com.offnetic.domain.model.Message>> = messageDao.getMessagesForChat(contactPublicKey, 100, 0)
         .map { entities -> entities.map { com.offnetic.domain.model.Message.fromEntity(it) } }

@@ -22,8 +22,14 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 
-    <!-- Notifications for proximity pings -->
+    <!-- Notifications for proximity pings and incoming messages -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Incoming call display (full-screen intent) -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+
+    <!-- Vibration for incoming calls -->
+    <uses-permission android:name="android.permission.VIBRATE" />
 
     <!-- Foreground service for NCAPI listener -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -85,6 +91,8 @@
             android:screenOrientation="portrait"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
             android:launchMode="singleTop"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
             tools:ignore="LockedOrientationActivity" />
 
         <!-- Foreground service for NCAPI -->
@@ -93,6 +101,12 @@
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="connectedDevice|shortService" />
+
+        <service
+            android:name=".service.IncomingCallService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="shortService" />
 
         <!-- FileProvider for opening received files in external apps -->
         <provider

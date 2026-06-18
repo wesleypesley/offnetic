@@ -1,6 +1,7 @@
 package com.offnetic.ui.navigation
 
 import android.content.Intent
+import android.os.Build
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -18,6 +19,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.offnetic.data.nearby.NcapManager
@@ -29,12 +31,14 @@ import com.offnetic.ui.chat.ChatScreen
 import com.offnetic.ui.contacts.ContactDetailScreen
 import com.offnetic.ui.contacts.MyQrScreen
 import com.offnetic.ui.contacts.QrScannerScreen
+import com.offnetic.ui.onboarding.FullScreenIntentPermissionScreen
 import com.offnetic.ui.onboarding.IdentityGenerationScreen
 import com.offnetic.ui.onboarding.PermissionSlide
 import com.offnetic.ui.onboarding.ProfileSetupScreen
 import com.offnetic.ui.onboarding.SplashScreen
 import com.offnetic.ui.screens.MainScreen
 import com.offnetic.ui.settings.SettingsScreen
+import com.offnetic.util.MessageNotificationManager
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
@@ -43,8 +47,9 @@ import java.net.URLEncoder
 
 @EntryPoint
 @InstallIn(SingletonComponent::class)
-interface IncomingCallEntryPoint {
+interface NavHostEntryPoint {
     fun ncapManager(): NcapManager
+    fun messageNotificationManager(): MessageNotificationManager
 }
 
 @Composable
@@ -53,19 +58,25 @@ fun OffneticNavHost() {
     val context = LocalContext.current
 
     val ncapManager = remember {
-        EntryPointAccessors.fromApplication(context.applicationContext, IncomingCallEntryPoint::class.java)
+        EntryPointAccessors.fromApplication(context.applicationContext, NavHostEntryPoint::class.java)
             .ncapManager()
+    }
+
+    val messageNotificationManager = remember {
+        EntryPointAccessors.fromApplication(context.applicationContext, NavHostEntryPoint::class.java)
+            .messageNotificationManager()
     }
 
     LaunchedEffect(Unit) {
         ncapManager.incomingCallEvents.collect { senderPublicKey ->
-            android.util.Log.e("offCall", "NavHost incomingCallEvents → launching CallActivity for ${senderPublicKey.take(8)}")
-            val intent = Intent(context, CallActivity::class.java).apply {
-                putExtra("EXTRA_PEER_PUBLIC_KEY", URLEncoder.encode(senderPublicKey, "UTF-8"))
-                putExtra("EXTRA_IS_INCOMING", true)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            if (ncapManager.isCallActive) {
+                val intent = Intent(context, CallActivity::class.java).apply {
+                    putExtra("EXTRA_PEER_PUBLIC_KEY", URLEncoder.encode(senderPublicKey, "UTF-8"))
+                    putExtra("EXTRA_IS_INCOMING", true)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
             }
-            context.startActivity(intent)
         }
     }
 
@@ -95,6 +106,18 @@ fun OffneticNavHost() {
             titleContentColor = Color.White,
             textContentColor = Color(0xB3FFFFFF)
         )
+    }
+
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = navBackStackEntry?.destination?.route
+    val pendingChatKey by messageNotificationManager.pendingChatNavigation.collectAsState()
+
+    LaunchedEffect(pendingChatKey, currentRoute) {
+        val key = pendingChatKey ?: return@LaunchedEffect
+        if (currentRoute == Routes.MAIN) {
+            messageNotificationManager.pendingChatNavigation.value = null
+            navController.navigate(Routes.chatRoute(key))
+        }
     }
 
     val splashViewModel: SplashViewModel = hiltViewModel()
@@ -143,6 +166,18 @@ fun OffneticNavHost() {
         composable(Routes.PERMISSION_3_NOTIFICATIONS) {
             PermissionSlide(
                 title = "Notifications",
+                onNext = {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                        navController.navigate(Routes.PERMISSION_4_FULL_SCREEN_INTENT)
+                    } else {
+                        navController.navigate(Routes.IDENTITY_GENERATION)
+                    }
+                }
+            )
+        }
+
+        composable(Routes.PERMISSION_4_FULL_SCREEN_INTENT) {
+            FullScreenIntentPermissionScreen(
                 onNext = { navController.navigate(Routes.IDENTITY_GENERATION) }
             )
         }

@@ -8,6 +8,7 @@ object Routes {
     const val PERMISSION_1_CONNECTIVITY = "permissions/connectivity"
     const val PERMISSION_2_CAMERA_MIC = "permissions/camera_mic"
     const val PERMISSION_3_NOTIFICATIONS = "permissions/notifications"
+    const val PERMISSION_4_FULL_SCREEN_INTENT = "permissions/full_screen_intent"
     const val IDENTITY_GENERATION = "identity_generation"
     const val PROFILE_SETUP = "profile_setup"
     const val MAIN = "main"

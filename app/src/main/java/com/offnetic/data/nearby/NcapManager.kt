@@ -47,5 +47,6 @@ interface NcapManager {
     fun getConnectedEndpointIds(publicKey: String): List<String>
     fun forceRestart(name: String)
     fun setCallActive(active: Boolean)
+    val isCallActive: Boolean
     suspend fun getMyPublicKey(): String
 }

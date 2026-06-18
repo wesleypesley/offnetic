@@ -1,5 +1,6 @@
 package com.offnetic
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -9,12 +10,15 @@ import androidx.core.view.WindowCompat
 import com.offnetic.ui.MainViewModel
 import com.offnetic.ui.navigation.OffneticNavHost
 import com.offnetic.ui.theme.Theme
+import com.offnetic.util.MessageNotificationManager
 import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
     private val viewModel: MainViewModel by viewModels()
+    @Inject lateinit var messageNotificationManager: MessageNotificationManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -29,10 +33,24 @@ class MainActivity : ComponentActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
 
+        handleChatNavigationIntent(intent)
+
         setContent {
             Theme {
                 OffneticNavHost()
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleChatNavigationIntent(intent)
+    }
+
+    private fun handleChatNavigationIntent(intent: Intent?) {
+        intent?.getStringExtra("EXTRA_NAVIGATE_CHAT_KEY")?.let { key ->
+            intent.removeExtra("EXTRA_NAVIGATE_CHAT_KEY")
+            messageNotificationManager.pendingChatNavigation.value = key
         }
     }
 }
