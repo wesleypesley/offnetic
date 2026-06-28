@@ -20,13 +20,16 @@ sealed class NcapEnvelope {
         CALL_ANSWER,
         ICE_CANDIDATE,
         CALL_HANGUP,
-        INITIAL_IDENTITY
+        INITIAL_IDENTITY,
+        DELIVERY_ACK,
+        READ_RECEIPT
     }
 
     data class Plain(
         val senderPublicKey: String,
         val payloadType: PayloadType,
-        val payload: ByteArray
+        val payload: ByteArray,
+        val messageUuid: String = ""
     ) : NcapEnvelope() {
         fun toBytes(): ByteArray {
             val json = JSONObject().apply {
@@ -34,6 +37,7 @@ sealed class NcapEnvelope {
                 put("sender", senderPublicKey)
                 put("type", payloadType.name)
                 put("payload", Base64.encodeToString(payload, Base64.NO_WRAP))
+                if (messageUuid.isNotEmpty()) put("uuid", messageUuid)
             }
             return json.toString().toByteArray(Charsets.UTF_8)
         }
@@ -45,7 +49,8 @@ sealed class NcapEnvelope {
                     Plain(
                         senderPublicKey = json.getString("sender"),
                         payloadType = PayloadType.valueOf(json.getString("type")),
-                        payload = Base64.decode(json.getString("payload"), Base64.NO_WRAP)
+                        payload = Base64.decode(json.getString("payload"), Base64.NO_WRAP),
+                        messageUuid = json.optString("uuid", "")
                     )
                 } catch (_: Exception) {
                     null

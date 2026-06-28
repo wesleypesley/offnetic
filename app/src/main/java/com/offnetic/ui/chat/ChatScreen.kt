@@ -8,6 +8,9 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -43,6 +46,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -77,9 +81,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.offnetic.domain.model.ChatReachability
 import com.offnetic.domain.model.Message
-import com.offnetic.ui.theme.FontFamilyIBM
-import com.offnetic.ui.theme.FontFamilySyne
+import com.offnetic.domain.model.MessageDeliveryState
 import com.offnetic.ui.theme.Spacing
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -96,7 +100,7 @@ fun ChatScreen(
 ) {
     val messages by viewModel.messages.collectAsState()
     val contactName by viewModel.contactName.collectAsState()
-    val isOnline by viewModel.isContactOnline.collectAsState()
+    val reachability by viewModel.reachability.collectAsState()
     val isRecording by viewModel.isRecording.collectAsState()
     val myPublicKey by viewModel.myPublicKey.collectAsState()
 
@@ -106,7 +110,7 @@ fun ChatScreen(
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_RESUME -> viewModel.setActive()
+                Lifecycle.Event.ON_RESUME -> { viewModel.setActive(); viewModel.markAsRead() }
                 Lifecycle.Event.ON_PAUSE -> viewModel.clearActive()
                 else -> {}
             }
@@ -155,7 +159,7 @@ fun ChatScreen(
         Column(modifier = Modifier.fillMaxSize()) {
             ChatHeader(
                 contactName = contactName,
-                isOnline = isOnline,
+                reachability = reachability,
                 onBack = onBack,
                 onCall = { onCall(viewModel.contactPublicKey) }
             )
@@ -182,6 +186,7 @@ fun ChatScreen(
             InputBar(
                 textInput = textInput,
                 isRecording = isRecording,
+                richEnabled = reachability == ChatReachability.LOCAL,
                 onTextChange = { if (it.length <= 5000) textInput = it },
                 onSend = {
                     if (textInput.isNotBlank()) {
@@ -199,7 +204,7 @@ fun ChatScreen(
 @Composable
 private fun ChatHeader(
     contactName: String,
-    isOnline: Boolean,
+    reachability: ChatReachability,
     onBack: () -> Unit,
     onCall: () -> Unit
 ) {
@@ -216,7 +221,6 @@ private fun ChatHeader(
             IconButton(onClick = onBack) {
                 Text(
                     text = "←",
-                    fontFamily = FontFamilyIBM,
                     fontWeight = FontWeight.Bold,
                     fontSize = 20.sp,
                     color = Color.White
@@ -226,7 +230,6 @@ private fun ChatHeader(
             Column(modifier = Modifier.weight(1f).padding(horizontal = Spacing.sm)) {
                 Text(
                     text = contactName,
-                    fontFamily = FontFamilySyne,
                     fontWeight = FontWeight.Bold,
                     fontSize = 17.sp,
                     color = Color.White,
@@ -235,30 +238,33 @@ private fun ChatHeader(
                     overflow = TextOverflow.Ellipsis
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    val (targetColor, statusLabel) = when (reachability) {
+                        ChatReachability.LOCAL -> Color(0xFF4ADE80) to "Nearby"
+                        ChatReachability.INTERNET_RELAY -> Color(0xFF60A5FA) to "Internet"
+                        ChatReachability.OFFLINE -> Color(0x40FFFFFF) to "Offline"
+                    }
+                    val dotColor by animateColorAsState(targetColor, animationSpec = tween(300), label = "dot")
                     Box(
                         modifier = Modifier
                             .size(6.dp)
-                            .background(
-                                if (isOnline) Color(0xFF4ADE80) else Color(0x40FFFFFF),
-                                CircleShape
-                            )
+                            .background(dotColor, CircleShape)
                     )
                     Spacer(modifier = Modifier.width(Spacing.sm))
+                    AnimatedContent(targetState = statusLabel, label = "status") { label ->
                     Text(
-                        text = if (isOnline) "Online" else "Offline",
-                        fontFamily = FontFamilyIBM,
-                        fontWeight = FontWeight.Medium,
-                        fontSize = 11.sp,
-                        color = if (isOnline) Color(0xFF4ADE80) else Color(0x40FFFFFF)
+                        text = label,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = dotColor
                     )
+                    }
                 }
             }
 
-            IconButton(onClick = onCall) {
+            IconButton(onClick = onCall, enabled = reachability == ChatReachability.LOCAL) {
                 Icon(
                     painter = painterResource(R.drawable.ic_phone_outlined),
                     contentDescription = "Call",
-                    tint = Color(0xB3FFFFFF),
+                    tint = if (reachability == ChatReachability.LOCAL) Color(0xB3FFFFFF) else Color(0x40FFFFFF),
                     modifier = Modifier.size(20.dp)
                 )
             }
@@ -270,6 +276,7 @@ private fun ChatHeader(
 private fun InputBar(
     textInput: String,
     isRecording: Boolean,
+    richEnabled: Boolean,
     onTextChange: (String) -> Unit,
     onSend: () -> Unit,
     onAttachFile: () -> Unit,
@@ -285,24 +292,23 @@ private fun InputBar(
                 .padding(horizontal = Spacing.sm, vertical = Spacing.sm),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = onAttachFile) {
+            IconButton(onClick = onAttachFile, enabled = richEnabled) {
                 Text(
                     text = "+",
-                    fontFamily = FontFamilyIBM,
                     fontWeight = FontWeight.Bold,
                     fontSize = 20.sp,
-                    color = Color(0x73FFFFFF)
+                    color = if (richEnabled) Color(0x73FFFFFF) else Color(0x40FFFFFF)
                 )
             }
 
-            IconButton(onClick = onToggleRecord) {
+            IconButton(onClick = onToggleRecord, enabled = richEnabled || isRecording) {
                 Box(
                     modifier = Modifier.size(16.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Canvas(modifier = Modifier.fillMaxSize()) {
                         drawCircle(
-                            color = if (isRecording) Color(0xFFEF4444) else Color(0x73FFFFFF),
+                            color = if (isRecording) Color(0xFFEF4444) else if (richEnabled) Color(0x73FFFFFF) else Color(0x40FFFFFF),
                             radius = size.minDimension / 2
                         )
                     }
@@ -316,7 +322,7 @@ private fun InputBar(
                 placeholder = {
                     Text(
                         "Message",
-                        fontFamily = FontFamilyIBM,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = Color(0x40FFFFFF)
                     )
                 },
@@ -393,26 +399,20 @@ private fun MessageBubble(
                             val ctx = LocalContext.current
                             Text(
                                 text = message.content,
-                                fontFamily = FontFamilyIBM,
-                                fontWeight = FontWeight.Medium,
-                                fontSize = 13.sp,
+                style = MaterialTheme.typography.bodySmall,
                                 color = Color(0x66FFFFFF)
                             )
                             Spacer(modifier = Modifier.height(Spacing.sm))
                             Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                                 Text(
                                     text = "Retry",
-                                    fontFamily = FontFamilyIBM,
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 12.sp,
+                                    style = MaterialTheme.typography.bodySmall,
                                     color = Color(0xFF4ADE80),
                                     modifier = Modifier.clickable { onRetry() }
                                 )
                                 Text(
                                     text = "Delete",
-                                    fontFamily = FontFamilyIBM,
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 12.sp,
+                                    style = MaterialTheme.typography.bodySmall,
                                     color = Color(0xFFEF4444),
                                     modifier = Modifier.clickable { onDelete() }
                                 )
@@ -421,9 +421,7 @@ private fun MessageBubble(
                         Message.TYPE_TEXT -> {
                             Text(
                                 text = message.content,
-                                fontFamily = FontFamilyIBM,
-                                fontWeight = FontWeight.Medium,
-                                fontSize = 15.sp,
+                                style = MaterialTheme.typography.bodyMedium,
                                 color = Color(0xE6FFFFFF),
                                 maxLines = 20,
                                 overflow = TextOverflow.Ellipsis
@@ -491,13 +489,11 @@ private fun MessageBubble(
                                     }
                                 }
                                 Spacer(modifier = Modifier.width(Spacing.sm))
-                                Text(
-                                    text = if (isPlaying) "Playing..." else message.content,
-                                    fontFamily = FontFamilyIBM,
-                                    fontWeight = FontWeight.Medium,
-                                    fontSize = 13.sp,
-                                    color = Color(0xB3FFFFFF)
-                                )
+                            Text(
+                                text = message.content,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0x66FFFFFF)
+                            )
                             }
                         }
                         Message.TYPE_FILE, Message.TYPE_IMAGE, Message.TYPE_VIDEO -> {
@@ -542,9 +538,7 @@ private fun MessageBubble(
                                 Spacer(modifier = Modifier.height(Spacing.xs))
                                 Text(
                                     text = fileName,
-                                    fontFamily = FontFamilyIBM,
-                                    fontWeight = FontWeight.Medium,
-                                    fontSize = 12.sp,
+                                    style = MaterialTheme.typography.bodySmall,
                                     color = Color(0x66FFFFFF),
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
@@ -554,9 +548,7 @@ private fun MessageBubble(
                         Message.TYPE_SYSTEM -> {
                             Text(
                                 text = message.content,
-                                fontFamily = FontFamilyIBM,
-                                fontWeight = FontWeight.Medium,
-                                fontSize = 13.sp,
+                style = MaterialTheme.typography.bodySmall,
                                 color = Color(0x66FFFFFF)
                             )
                         }
@@ -570,17 +562,17 @@ private fun MessageBubble(
             ) {
                 DropdownMenuItem(
                     text = {
-                        Text("Delete for me", fontFamily = FontFamilyIBM, color = Color(0xFFEF4444))
+                        Text("Delete for me", style = MaterialTheme.typography.labelLarge, color = Color(0xFFEF4444))
                     },
                     onClick = {
                         showMenu = false
                         onDelete()
                     }
                 )
-                if (isMine && !message.isSent && message.type != Message.TYPE_CANCELLED) {
+                if (isMine && message.deliveryState == MessageDeliveryState.SAVED && message.type != Message.TYPE_CANCELLED) {
                     DropdownMenuItem(
                         text = {
-                            Text("Cancel sending", fontFamily = FontFamilyIBM, color = Color(0xFFEF4444))
+                            Text("Cancel sending", style = MaterialTheme.typography.labelLarge, color = Color(0xFFEF4444))
                         },
                         onClick = {
                             showMenu = false
@@ -591,14 +583,32 @@ private fun MessageBubble(
             }
         }
 
-        Text(
-            text = formatTime(message.timestamp),
-            fontFamily = FontFamilyIBM,
-            fontWeight = FontWeight.Medium,
-            fontSize = 11.sp,
-            color = Color(0x40FFFFFF),
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(horizontal = Spacing.xs, vertical = Spacing.xxs)
-        )
+        ) {
+            Text(
+                text = formatTime(message.timestamp),
+                style = MaterialTheme.typography.bodySmall,
+                color = Color(0x40FFFFFF)
+            )
+            if (isMine && message.type != Message.TYPE_CANCELLED && message.type != Message.TYPE_SYSTEM) {
+                Spacer(modifier = Modifier.width(Spacing.xs))
+                val (statusColor, statusLabel) = when (message.deliveryState) {
+                    MessageDeliveryState.SAVED -> Color(0x40FFFFFF) to "Saved"
+                    MessageDeliveryState.SENT_LOCAL -> Color(0x66FFFFFF) to "Sending"
+                    MessageDeliveryState.SENT_RELAY -> Color(0x66FFFFFF) to "Relayed"
+                    MessageDeliveryState.DELIVERED -> Color(0xCCFFFFFF) to "Delivered"
+                    MessageDeliveryState.READ -> Color(0xFF4ADE80) to "Seen"
+                    MessageDeliveryState.FAILED -> Color(0xFFEF4444) to "Failed"
+                }
+                Text(
+                    text = statusLabel,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = statusColor
+                )
+            }
+        }
     }
 }
 
@@ -646,18 +656,14 @@ private fun ImageThumbnail(
         } else if (!failed) {
             Text(
                 text = "Loading...",
-                fontFamily = FontFamilyIBM,
-                fontWeight = FontWeight.Medium,
-                fontSize = 13.sp,
+                style = MaterialTheme.typography.bodySmall,
                 color = Color(0x4DFFFFFF),
                 modifier = Modifier.padding(Spacing.xl)
             )
         } else {
             Text(
                 text = "Could not load preview",
-                fontFamily = FontFamilyIBM,
-                fontWeight = FontWeight.Medium,
-                fontSize = 13.sp,
+                style = MaterialTheme.typography.bodySmall,
                 color = Color(0x40FFFFFF),
                 modifier = Modifier.padding(Spacing.xl)
             )
@@ -728,18 +734,14 @@ private fun VideoThumbnail(
         } else if (!failed) {
             Text(
                 text = "Loading...",
-                fontFamily = FontFamilyIBM,
-                fontWeight = FontWeight.Medium,
-                fontSize = 13.sp,
+                style = MaterialTheme.typography.bodySmall,
                 color = Color(0x4DFFFFFF),
                 modifier = Modifier.padding(Spacing.xl)
             )
         } else {
             Text(
                 text = "Could not load preview",
-                fontFamily = FontFamilyIBM,
-                fontWeight = FontWeight.Medium,
-                fontSize = 13.sp,
+                style = MaterialTheme.typography.bodySmall,
                 color = Color(0x40FFFFFF),
                 modifier = Modifier.padding(Spacing.xl)
             )
@@ -767,31 +769,26 @@ private fun DocAttachment(
             color = Color(0x1AFFFFFF)
         ) {
             Box(contentAlignment = Alignment.Center) {
-                Text(
-                    text = fileName.substringAfterLast('.', "?").take(3).uppercase(),
-                    fontFamily = FontFamilyIBM,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 10.sp,
-                    color = Color(0x73FFFFFF)
-                )
+            Text(
+                text = fileName.substringAfterLast('.', "?").take(3).uppercase(),
+                fontWeight = FontWeight.Bold,
+                fontSize = 10.sp,
+                color = Color(0x73FFFFFF)
+            )
             }
         }
         Spacer(modifier = Modifier.width(Spacing.md))
         Column {
             Text(
                 text = fileName,
-                fontFamily = FontFamilyIBM,
-                fontWeight = FontWeight.Medium,
-                fontSize = 14.sp,
+                style = MaterialTheme.typography.bodyMedium,
                 color = Color.White,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Text(
                 text = "Tap to open",
-                fontFamily = FontFamilyIBM,
-                fontWeight = FontWeight.Medium,
-                fontSize = 11.sp,
+                style = MaterialTheme.typography.bodySmall,
                 color = Color(0x40FFFFFF)
             )
         }

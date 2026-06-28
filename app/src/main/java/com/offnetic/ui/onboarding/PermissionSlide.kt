@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -41,7 +42,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.offnetic.ui.theme.FontFamilySyne
 import com.offnetic.ui.theme.Spacing
 
 private val permConfigs = listOf(
@@ -163,9 +163,7 @@ fun PermissionSlide(
             ) {
                 Text(
                     text = config.tag,
-                    fontFamily = FontFamilySyne,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 11.sp,
+                    style = MaterialTheme.typography.labelSmall,
                     letterSpacing = 2.5.sp,
                     color = Color(0x4DFFFFFF)
                 )
@@ -220,23 +218,16 @@ fun PermissionSlide(
 
                 Text(
                     text = config.title,
-                    fontFamily = FontFamilySyne,
-                    fontWeight = FontWeight.ExtraBold,
-                    fontSize = 36.sp,
-                    color = Color.White,
-                    lineHeight = 41.sp,
-                    letterSpacing = (-1).sp
+                    style = MaterialTheme.typography.displayLarge,
+                    color = Color.White
                 )
 
                 Spacer(modifier = Modifier.height(Spacing.lg))
 
                 Text(
                     text = config.desc,
-                    fontFamily = FontFamilySyne,
-                    fontWeight = FontWeight.Normal,
-                    fontSize = 15.sp,
-                    color = Color(0x73FFFFFF),
-                    lineHeight = 25.sp
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0x73FFFFFF)
                 )
 
                 Spacer(modifier = Modifier.height(Spacing.xxl))
@@ -250,9 +241,7 @@ fun PermissionSlide(
                         ) {
                             Text(
                                 text = p,
-                                fontFamily = FontFamilySyne,
-                                fontWeight = FontWeight.Medium,
-                                fontSize = 12.sp,
+                                style = MaterialTheme.typography.bodySmall,
                                 color = Color(0x80FFFFFF),
                                 letterSpacing = 0.3.sp
                             )
@@ -283,9 +272,7 @@ fun PermissionSlide(
                 ) {
                     Text(
                         text = config.btnLabel,
-                        fontFamily = FontFamilySyne,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp
+                        style = MaterialTheme.typography.labelLarge
                     )
                 }
 
@@ -293,9 +280,7 @@ fun PermissionSlide(
 
                 Text(
                     text = "You can change this anytime in Settings",
-                    fontFamily = FontFamilySyne,
-                    fontWeight = FontWeight.Medium,
-                    fontSize = 12.sp,
+                    style = MaterialTheme.typography.bodySmall,
                     color = Color(0x33FFFFFF),
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth()

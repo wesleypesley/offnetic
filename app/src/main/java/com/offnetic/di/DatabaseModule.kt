@@ -8,7 +8,11 @@ import com.offnetic.data.local.db.dao.CallHistoryDao
 import com.offnetic.data.local.db.dao.ContactDao
 import com.offnetic.data.local.db.dao.IdentityDao
 import com.offnetic.data.local.db.dao.MessageDao
+import com.offnetic.data.local.db.dao.PendingRequestDao
 import com.offnetic.data.local.db.dao.PreKeyDao
+import com.offnetic.data.local.db.dao.RelayOutboxDao
+import com.offnetic.data.local.db.dao.RelayStateDao
+import com.offnetic.data.local.db.dao.NostrIdentityDao
 import com.offnetic.data.local.db.dao.ProfileDao
 import com.offnetic.data.local.db.dao.SessionDao
 import com.offnetic.data.local.db.dao.SignalIdentityDao
@@ -92,4 +96,16 @@ object DatabaseModule {
 
     @Provides @Singleton
     fun provideCallHistoryDao(database: OffneticDatabase): CallHistoryDao = database.callHistoryDao()
+
+    @Provides @Singleton
+    fun provideRelayOutboxDao(database: OffneticDatabase): RelayOutboxDao = database.relayOutboxDao()
+
+    @Provides @Singleton
+    fun providePendingRequestDao(database: OffneticDatabase): PendingRequestDao = database.pendingRequestDao()
+
+    @Provides @Singleton
+    fun provideRelayStateDao(database: OffneticDatabase): RelayStateDao = database.relayStateDao()
+
+    @Provides @Singleton
+    fun provideNostrIdentityDao(database: OffneticDatabase): NostrIdentityDao = database.nostrIdentityDao()
 }

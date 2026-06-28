@@ -28,13 +28,25 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE id = :id")
     suspend fun getById(id: Long): Message?
 
+    @Query("SELECT * FROM messages WHERE messageUuid = :messageUuid LIMIT 1")
+    suspend fun getByMessageUuid(messageUuid: String): Message?
+
+    @Query("UPDATE messages SET deliveryState = 'DELIVERED' WHERE messageUuid = :messageUuid AND deliveryState IN ('SENT_LOCAL','SENT_RELAY')")
+    suspend fun markDelivered(messageUuid: String)
+
+    @Query("UPDATE messages SET deliveryState = 'READ' WHERE messageUuid = :messageUuid AND deliveryState IN ('SENT_LOCAL','SENT_RELAY','DELIVERED')")
+    suspend fun markRead(messageUuid: String)
+
     @Query("SELECT COUNT(*) FROM messages WHERE chatId = :chatId AND isRead = 0 AND senderPublicKey != :myPublicKey")
     suspend fun getUnreadCount(chatId: String, myPublicKey: String): Int
 
     @Query("UPDATE messages SET isRead = 1 WHERE chatId = :chatId AND senderPublicKey != :myPublicKey")
     suspend fun markAsRead(chatId: String, myPublicKey: String)
 
-    @Query("SELECT * FROM messages WHERE chatId = :chatId AND isSent = 0 AND senderPublicKey = :myPublicKey ORDER BY timestamp ASC")
+    @Query("SELECT messageUuid FROM messages WHERE chatId = :chatId AND isRead = 0 AND senderPublicKey != :myPublicKey")
+    suspend fun getUnreadIncomingUuids(chatId: String, myPublicKey: String): List<String>
+
+    @Query("SELECT * FROM messages WHERE chatId = :chatId AND deliveryState = 'SAVED' AND senderPublicKey = :myPublicKey ORDER BY timestamp ASC")
     suspend fun getUnsentMessagesForChat(chatId: String, myPublicKey: String): List<Message>
 
     @Query("DELETE FROM messages WHERE chatId = :chatId")

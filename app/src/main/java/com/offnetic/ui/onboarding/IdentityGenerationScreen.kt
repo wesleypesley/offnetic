@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -38,7 +39,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.offnetic.ui.theme.FontFamilySyne
 import com.offnetic.ui.theme.Spacing
 import kotlinx.coroutines.delay
 
@@ -127,7 +127,6 @@ fun IdentityGenerationScreen(
                     } else {
                         Text(
                             text = "✓",
-                            fontFamily = FontFamilySyne,
                             fontWeight = FontWeight.Bold,
                             fontSize = 18.sp,
                             color = Color.White
@@ -140,11 +139,8 @@ fun IdentityGenerationScreen(
 
             Text(
                 text = if (phase == 0) "Creating your identity" else "Identity created",
-                fontFamily = FontFamilySyne,
-                fontWeight = FontWeight.Bold,
-                fontSize = 24.sp,
-                color = Color.White,
-                letterSpacing = (-0.5).sp
+                style = MaterialTheme.typography.titleLarge,
+                color = Color.White
             )
 
             Spacer(modifier = Modifier.height(Spacing.sm))
@@ -154,12 +150,9 @@ fun IdentityGenerationScreen(
                     "Your cryptographic identity is being generated entirely on this device."
                 else
                     "Your keys are sealed in the Android Keystore.",
-                fontFamily = FontFamilySyne,
-                fontWeight = FontWeight.Medium,
-                fontSize = 14.sp,
+                style = MaterialTheme.typography.bodyMedium,
                 color = Color(0x59FFFFFF),
-                textAlign = TextAlign.Center,
-                lineHeight = 22.sp
+                textAlign = TextAlign.Center
             )
 
             Spacer(modifier = Modifier.height(Spacing.xxxl))
@@ -192,9 +185,7 @@ fun IdentityGenerationScreen(
                             Spacer(modifier = Modifier.width(Spacing.md))
                             Text(
                                 text = line,
-                                fontFamily = FontFamilySyne,
-                                fontWeight = FontWeight.Medium,
-                                fontSize = 12.sp,
+                                style = MaterialTheme.typography.bodySmall,
                                 color = when {
                                     i <= activeLine -> Color(0x99FFFFFF)
                                     else -> Color(0x33FFFFFF)
@@ -221,9 +212,7 @@ fun IdentityGenerationScreen(
                 ) {
                     Text(
                         text = "Continue",
-                        fontFamily = FontFamilySyne,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp
+                        style = MaterialTheme.typography.labelLarge
                     )
                 }
             }

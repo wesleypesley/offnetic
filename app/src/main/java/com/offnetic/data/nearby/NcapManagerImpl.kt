@@ -577,6 +577,19 @@ class NcapManagerImpl @Inject constructor(
         }
     }
 
+    override suspend fun sendReadReceipt(contactPublicKey: String, messageUuid: String) {
+        if (messageUuid.isEmpty()) return
+        val myPublicKey = identityDao.getIdentity()?.publicKey ?: return
+        val endpointId = getConnectedEndpointIds(contactPublicKey).firstOrNull() ?: return
+        val envelope = NcapEnvelope.Plain(
+            senderPublicKey = myPublicKey,
+            payloadType = NcapEnvelope.PayloadType.READ_RECEIPT,
+            payload = ByteArray(0),
+            messageUuid = messageUuid
+        )
+        scope.launch { runCatching { sendPayload(endpointId, envelope.toBytes()) } }
+    }
+
     override suspend fun sendFile(
         endpointId: String,
         fileUri: String,
@@ -711,7 +724,7 @@ class NcapManagerImpl @Inject constructor(
                 content = "File transfer failed" + (meta?.fileName?.let { ": $it" } ?: ""),
                 type = com.offnetic.data.local.db.entity.Message.TYPE_FILE,
                 timestamp = System.currentTimeMillis(),
-                isSent = false,
+                deliveryState = com.offnetic.domain.model.MessageDeliveryState.SAVED,
                 isRead = false
             )
             messageDao.insert(entity)
@@ -769,7 +782,15 @@ class NcapManagerImpl @Inject constructor(
                     }
                     NcapEnvelope.PayloadType.SIGNAL_MESSAGE -> {
                         Timber.d("handleIncoming: SIGNAL_MESSAGE from ${senderPublicKey.take(8)}... (${envelope.payload.size}B)")
-                        handleSignalMessage(senderPublicKey, envelope.payload)
+                        handleSignalMessage(endpointId, senderPublicKey, envelope.payload, envelope.messageUuid)
+                    }
+                    NcapEnvelope.PayloadType.DELIVERY_ACK -> {
+                        if (envelope.messageUuid.isNotEmpty()) messageDao.markDelivered(envelope.messageUuid)
+                        Timber.d("Nearby delivery ack uuid=${envelope.messageUuid.take(8)} -> DELIVERED")
+                    }
+                    NcapEnvelope.PayloadType.READ_RECEIPT -> {
+                        if (envelope.messageUuid.isNotEmpty()) messageDao.markRead(envelope.messageUuid)
+                        Timber.d("Nearby read receipt uuid=${envelope.messageUuid.take(8)} -> READ")
                     }
                     NcapEnvelope.PayloadType.HEARTBEAT -> {
                         Timber.d("Heartbeat from ${senderPublicKey.take(8)}...")
@@ -818,7 +839,7 @@ class NcapManagerImpl @Inject constructor(
                                 content = "Chat established via QR pairing",
                                 type = com.offnetic.data.local.db.entity.Message.TYPE_SYSTEM,
                                 timestamp = System.currentTimeMillis(),
-                                isSent = true,
+                                deliveryState = com.offnetic.domain.model.MessageDeliveryState.SENT_LOCAL,
                                 isRead = true
                             )
                             messageDao.insert(systemMsg)
@@ -895,7 +916,7 @@ class NcapManagerImpl @Inject constructor(
             }
             is NcapEnvelope.SealedSender -> {
                 Timber.d("Sealed sender message from ${senderPublicKey.take(8)}..., attempting decrypt")
-                handleSignalMessage(senderPublicKey, envelope.ciphertext)
+                handleSignalMessage(endpointId, senderPublicKey, envelope.ciphertext, "")
             }
         }
     }
@@ -939,7 +960,7 @@ class NcapManagerImpl @Inject constructor(
         }
     }
 
-    private suspend fun handleSignalMessage(senderPublicKey: String, ciphertext: ByteArray) {
+    private suspend fun handleSignalMessage(endpointId: String, senderPublicKey: String, ciphertext: ByteArray, messageUuid: String) {
         android.util.Log.e("NcapFile", "handleSignalMessage decrypting ${ciphertext.size}B from ${senderPublicKey.take(8)}")
         val identity = identityDao.getIdentity()
         val myPublicKey = identity?.publicKey ?: run {
@@ -994,6 +1015,7 @@ class NcapManagerImpl @Inject constructor(
         val msgType = decryptedJson.optString("type", "text")
         val timestamp = decryptedJson.optLong("timestamp", System.currentTimeMillis())
         val chatId = senderPublicKey
+        val resolvedUuid = messageUuid.ifEmpty { java.util.UUID.randomUUID().toString() }
 
         val entity = when (msgType) {
             "file" -> {
@@ -1009,7 +1031,7 @@ class NcapManagerImpl @Inject constructor(
                     content = "File: $fileName",
                     type = com.offnetic.data.local.db.entity.Message.TYPE_FILE,
                     timestamp = timestamp,
-                    isSent = false,
+                    deliveryState = com.offnetic.domain.model.MessageDeliveryState.SAVED,
                     isRead = false,
                     attachmentPath = savedFile.absolutePath
                 )
@@ -1027,7 +1049,7 @@ class NcapManagerImpl @Inject constructor(
                     content = "Voice note  $duration",
                     type = com.offnetic.data.local.db.entity.Message.TYPE_VOICE_NOTE,
                     timestamp = timestamp,
-                    isSent = false,
+                    deliveryState = com.offnetic.domain.model.MessageDeliveryState.SAVED,
                     isRead = false,
                     attachmentPath = savedFile.absolutePath
                 )
@@ -1041,11 +1063,11 @@ class NcapManagerImpl @Inject constructor(
                     content = content,
                     type = com.offnetic.data.local.db.entity.Message.TYPE_TEXT,
                     timestamp = timestamp,
-                    isSent = false,
+                    deliveryState = com.offnetic.domain.model.MessageDeliveryState.SAVED,
                     isRead = false
                 )
             }
-        }
+        }.copy(messageUuid = resolvedUuid)
         messageDao.insert(entity)
         android.util.Log.e("NcapFile", "MESSAGE INSERTED: type=$msgType chatId=${chatId.take(8)} content=${entity.content.take(30)}")
 
@@ -1068,6 +1090,15 @@ class NcapManagerImpl @Inject constructor(
         _incomingMessages.emit(message)
         messageNotificationManager.notifyIfNeeded(senderPublicKey)
         Timber.d("Message decrypted for ${senderPublicKey.take(8)}...")
+        if (messageUuid.isNotEmpty()) {
+            val ackEnvelope = NcapEnvelope.Plain(
+                senderPublicKey = myPublicKey,
+                payloadType = NcapEnvelope.PayloadType.DELIVERY_ACK,
+                payload = ByteArray(0),
+                messageUuid = messageUuid
+            )
+            scope.launch { runCatching { sendPayload(endpointId, ackEnvelope.toBytes()) } }
+        }
     }
 
     private suspend fun handleIncomingFile(endpointId: String, senderPublicKey: String, payload: Payload) {
@@ -1173,7 +1204,7 @@ class NcapManagerImpl @Inject constructor(
             content = displayContent,
             type = displayType,
             timestamp = timestamp,
-            isSent = false,
+            deliveryState = com.offnetic.domain.model.MessageDeliveryState.SAVED,
             isRead = false,
             attachmentPath = savedPath,
             attachmentType = if (mimeType.startsWith("image/")) com.offnetic.data.local.db.entity.Message.TYPE_IMAGE

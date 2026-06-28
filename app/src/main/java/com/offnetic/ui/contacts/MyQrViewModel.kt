@@ -2,6 +2,7 @@ package com.offnetic.ui.contacts
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.offnetic.data.crypto.NostrIdentityManager
 import com.offnetic.data.local.db.dao.IdentityDao
 import com.offnetic.data.local.db.dao.ProfileDao
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -14,7 +15,8 @@ import javax.inject.Inject
 @HiltViewModel
 class MyQrViewModel @Inject constructor(
     private val identityDao: IdentityDao,
-    private val profileDao: ProfileDao
+    private val profileDao: ProfileDao,
+    private val nostrIdentityManager: NostrIdentityManager
 ) : ViewModel() {
 
     private val _qrPayload = MutableStateFlow<String?>(null)
@@ -29,7 +31,12 @@ class MyQrViewModel @Inject constructor(
             if (identity != null) {
                 val profile = profileDao.getByPublicKey(identity.publicKey)
                 val displayName = profile?.displayName
-                val data = QrPairingData(publicKey = identity.publicKey, displayName = displayName)
+                val npub = nostrIdentityManager.getNpub()
+                val data = QrPairingData(
+                    publicKey = identity.publicKey,
+                    displayName = displayName,
+                    nostrPublicKey = npub
+                )
                 _qrPayload.value = data.toQrPayload()
                 _displayName.value = displayName ?: identity.publicKey.take(12)
             }

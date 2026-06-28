@@ -14,6 +14,8 @@ object Routes {
     const val MAIN = "main"
     const val QR_SCANNER = "qr_scanner"
     const val MY_QR = "my_qr"
+    const val REQUESTS = "requests"
+    const val ADD_CONTACT_CONFIRM = "add_contact_confirm/{payload}"
     const val CHAT_LIST = "chat_list"
     const val CHAT = "chat/{contactPublicKey}"
     const val CONTACT_DETAIL = "contact_detail/{publicKey}"
@@ -21,6 +23,9 @@ object Routes {
 
     fun chatRoute(contactPublicKey: String) =
         "chat/${URLEncoder.encode(contactPublicKey, "UTF-8")}"
+
+    fun addContactConfirmRoute(payload: String) =
+        "add_contact_confirm/${URLEncoder.encode(payload, "UTF-8")}"
 
     fun contactDetailRoute(publicKey: String) =
         "contact_detail/${URLEncoder.encode(publicKey, "UTF-8")}"

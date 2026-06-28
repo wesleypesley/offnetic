@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -38,7 +39,6 @@ import com.offnetic.ui.call.CallsScreen
 import com.offnetic.ui.chat.ChatListContent
 import com.offnetic.ui.chat.ChatListViewModel
 import com.offnetic.ui.navigation.Routes
-import com.offnetic.ui.theme.FontFamilySyne
 import com.offnetic.ui.theme.Spacing
 
 @Composable
@@ -68,6 +68,7 @@ fun MainScreen(navController: NavController) {
                 0 -> ChatListContent(
                     onChatClick = { key -> navController.navigate(Routes.chatRoute(key)) },
                     onScanQr = { navController.navigate(Routes.QR_SCANNER) },
+                    onRequests = { navController.navigate(Routes.REQUESTS) },
                     onShutdown = {
                         context.stopService(Intent(context, NcapForegroundService::class.java))
                         activity?.finish()
@@ -129,10 +130,8 @@ private fun NavTab(
         )
         Text(
             text = label,
-            fontFamily = FontFamilySyne,
-            fontSize = 10.sp,
+            style = MaterialTheme.typography.labelSmall,
             letterSpacing = 0.5.sp,
-            fontWeight = FontWeight.SemiBold,
             color = if (isActive) Color(0xB3FFFFFF) else Color(0x33FFFFFF)
         )
     }

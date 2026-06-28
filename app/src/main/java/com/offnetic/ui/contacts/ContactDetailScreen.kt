@@ -39,8 +39,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.offnetic.ui.theme.FontFamilyIBM
-import com.offnetic.ui.theme.FontFamilySyne
 import com.offnetic.ui.theme.Spacing
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -82,9 +80,7 @@ fun ContactDetailScreen(
                 TextButton(onClick = onBack) {
                     Text(
                         text = "← Back",
-                        fontFamily = FontFamilyIBM,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 14.sp,
+                        style = MaterialTheme.typography.labelLarge,
                         color = Color.White
                     )
                 }
@@ -99,7 +95,7 @@ fun ContactDetailScreen(
                 ) {
                     Text(
                         text = "Loading...",
-                        fontFamily = FontFamilyIBM,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = Color(0x73FFFFFF)
                     )
                 }
@@ -114,7 +110,7 @@ fun ContactDetailScreen(
                 ) {
                     Text(
                         text = "Contact not found",
-                        fontFamily = FontFamilyIBM,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = Color(0x73FFFFFF)
                     )
                 }
@@ -133,7 +129,6 @@ fun ContactDetailScreen(
             ) {
             Text(
                 text = (contact.displayName).take(2).uppercase(),
-                    fontFamily = FontFamilySyne,
                     fontWeight = FontWeight.Bold,
                     fontSize = 28.sp,
                     color = Color.White
@@ -144,9 +139,7 @@ fun ContactDetailScreen(
 
             Text(
                 text = contact.displayName,
-                fontFamily = FontFamilySyne,
-                fontWeight = FontWeight.Bold,
-                fontSize = 22.sp,
+                style = MaterialTheme.typography.titleLarge,
                 color = Color.White,
                 modifier = Modifier.align(Alignment.CenterHorizontally)
             )
@@ -163,9 +156,7 @@ fun ContactDetailScreen(
             uiState.actionMessage?.let { msg ->
                 Text(
                     text = msg,
-                    fontFamily = FontFamilyIBM,
-                    fontWeight = FontWeight.Medium,
-                    fontSize = 13.sp,
+                    style = MaterialTheme.typography.bodySmall,
                     color = Color(0xFF4ADE80),
                     modifier = Modifier
                         .fillMaxWidth()
@@ -187,7 +178,7 @@ fun ContactDetailScreen(
                     brush = androidx.compose.ui.graphics.SolidColor(Color(0x14FFFFFF))
                 )
             ) {
-                Text("Remove Contact", fontFamily = FontFamilyIBM, fontWeight = FontWeight.SemiBold)
+                Text("Remove Contact", style = MaterialTheme.typography.labelLarge)
             }
 
             Spacer(modifier = Modifier.height(Spacing.md))
@@ -205,7 +196,7 @@ fun ContactDetailScreen(
                     brush = androidx.compose.ui.graphics.SolidColor(Color(0x24FFFFFF))
                 )
             ) {
-                Text("Delete Contact & Data", fontFamily = FontFamilyIBM, fontWeight = FontWeight.SemiBold)
+                Text("Delete Contact & Data", style = MaterialTheme.typography.labelLarge)
             }
 
             Spacer(modifier = Modifier.navigationBarsPadding().height(Spacing.xxxl))
@@ -252,18 +243,14 @@ private fun DetailRow(label: String, value: String) {
     ) {
         Text(
             text = label.uppercase(),
-            fontFamily = FontFamilyIBM,
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 11.sp,
+            style = MaterialTheme.typography.labelSmall,
             letterSpacing = 1.5.sp,
             color = Color(0x40FFFFFF)
         )
         Spacer(modifier = Modifier.height(Spacing.xs))
         Text(
             text = value,
-            fontFamily = FontFamilyIBM,
-            fontWeight = FontWeight.Medium,
-            fontSize = 15.sp,
+            style = MaterialTheme.typography.bodyMedium,
             color = Color.White
         )
     }
@@ -285,18 +272,14 @@ private fun ConfirmDialog(
         title = {
             Text(
                 text = title,
-                fontFamily = FontFamilySyne,
-                fontWeight = FontWeight.Bold,
-                fontSize = 20.sp,
+                style = MaterialTheme.typography.titleLarge,
                 color = Color.White
             )
         },
         text = {
             Text(
                 text = message,
-                fontFamily = FontFamilyIBM,
-                fontWeight = FontWeight.Medium,
-                fontSize = 15.sp,
+                style = MaterialTheme.typography.bodyMedium,
                 color = Color(0x73FFFFFF)
             )
         },
@@ -304,8 +287,7 @@ private fun ConfirmDialog(
             TextButton(onClick = onConfirm) {
                 Text(
                     text = confirmText,
-                    fontFamily = FontFamilyIBM,
-                    fontWeight = FontWeight.SemiBold,
+                    style = MaterialTheme.typography.labelLarge,
                     color = confirmColor
                 )
             }
@@ -314,8 +296,7 @@ private fun ConfirmDialog(
             TextButton(onClick = onDismiss) {
                 Text(
                     text = "Cancel",
-                    fontFamily = FontFamilyIBM,
-                    fontWeight = FontWeight.SemiBold,
+                    style = MaterialTheme.typography.labelLarge,
                     color = Color(0xFF3B82F6)
                 )
             }

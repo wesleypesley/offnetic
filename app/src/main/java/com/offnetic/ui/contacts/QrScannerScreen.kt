@@ -1,6 +1,9 @@
 package com.offnetic.ui.contacts
 
 import android.util.DisplayMetrics
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
@@ -13,6 +16,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -29,6 +33,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -47,6 +52,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
@@ -58,24 +64,45 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
-import com.offnetic.ui.theme.FontFamilySyne
 import com.offnetic.ui.theme.Spacing
 import java.util.concurrent.Executors
 
 @Composable
 fun QrScannerScreen(
-    onScanComplete: (QrPairingData) -> Unit,
+    onScanComplete: (String) -> Unit,
     onBack: () -> Unit = {},
     onShowMyQr: () -> Unit = {},
     viewModel: QrScannerViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var cameraError by remember { mutableStateOf<String?>(null) }
     var isFlashOn by remember { mutableStateOf(false) }
     var cameraProvider by remember { mutableStateOf<ProcessCameraProvider?>(null) }
     var camera by remember { mutableStateOf<androidx.camera.core.Camera?>(null) }
+
+    val galleryLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            try {
+                val image = InputImage.fromFilePath(context, uri)
+                BarcodeScanning.getClient().process(image)
+                    .addOnSuccessListener { barcodes ->
+                        val raw = barcodes.firstNotNullOfOrNull { barcode ->
+                            barcode.rawValue?.takeIf { QrPairingData.fromQrPayload(it) != null }
+                        }
+                        if (raw != null) viewModel.onCodeDetected(raw)
+                        else viewModel.setError("No Offnetic QR code found in that image")
+                    }
+                    .addOnFailureListener { viewModel.setError("Could not read that image") }
+            } catch (e: Exception) {
+                viewModel.setError("Could not read that image")
+            }
+        }
+    }
 
     val scanLineAnim = rememberInfiniteTransition(label = "scan")
     val scanLineY by scanLineAnim.animateFloat(
@@ -88,8 +115,18 @@ fun QrScannerScreen(
         label = "scanLine"
     )
 
-    LaunchedEffect(state.scannedData) {
-        state.scannedData?.let { onScanComplete(it) }
+    LaunchedEffect(state.detectedPayload) {
+        state.detectedPayload?.let {
+            viewModel.clearDetected()
+            onScanComplete(it)
+        }
+    }
+
+    LaunchedEffect(state.error) {
+        if (state.error != null) {
+            kotlinx.coroutines.delay(3000)
+            viewModel.clearError()
+        }
     }
 
     DisposableEffect(Unit) {
@@ -131,8 +168,8 @@ fun QrScannerScreen(
                                                 .addOnSuccessListener { barcodes ->
                                                     for (barcode in barcodes) {
                                                         barcode.rawValue?.let { raw ->
-                                                            QrPairingData.fromQrPayload(raw)?.let { data ->
-                                                                viewModel.onQrScanned(data)
+                                                            if (QrPairingData.fromQrPayload(raw) != null) {
+                                                                viewModel.onCodeDetected(raw)
                                                             }
                                                         }
                                                     }
@@ -165,24 +202,30 @@ fun QrScannerScreen(
 
             Text(
                 text = "Scan QR Code",
-                fontFamily = FontFamilySyne,
-                fontWeight = FontWeight.Bold,
-                fontSize = 24.sp,
-                color = Color.White,
-                letterSpacing = (-0.5).sp
+                style = MaterialTheme.typography.titleLarge,
+                color = Color.White
             )
             Spacer(modifier = Modifier.height(Spacing.sm))
             Text(
                 text = "Point your camera at the QR code to start a secure, encrypted handshake.",
-                fontFamily = FontFamilySyne,
-                fontWeight = FontWeight.Medium,
-                fontSize = 14.sp,
+                style = MaterialTheme.typography.bodyMedium,
                 color = Color(0x73FFFFFF),
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(horizontal = Spacing.xxxl)
             )
 
             Spacer(modifier = Modifier.weight(0.7f))
+
+            state.error?.let { err ->
+                Text(
+                    text = err,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFFEF4444),
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = Spacing.xxxl)
+                )
+                Spacer(modifier = Modifier.height(Spacing.sm))
+            }
 
             Button(
                 onClick = onShowMyQr,
@@ -198,18 +241,70 @@ fun QrScannerScreen(
             ) {
                 Text(
                     text = "Show My QR Code",
-                    fontFamily = FontFamilySyne,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp
+                    style = MaterialTheme.typography.labelLarge
+                )
+            }
+
+            Spacer(modifier = Modifier.height(Spacing.sm))
+
+            Button(
+                onClick = {
+                    galleryLauncher.launch(
+                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                    )
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = Spacing.xxl)
+                    .height(52.dp),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.5.dp, Color(0x40FFFFFF)),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color.Transparent,
+                    contentColor = Color.White
+                )
+            ) {
+                Text(
+                    text = "Import from gallery",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = Color.White
+                )
+            }
+
+            Spacer(modifier = Modifier.height(Spacing.sm))
+
+            Button(
+                onClick = {
+                    val text = clipboard.getText()?.text?.trim()
+                    val payload = text?.let { DeepLink.parseAddLink(it) }
+                    if (payload != null && QrPairingData.fromQrPayload(payload) != null) {
+                        viewModel.onCodeDetected(payload)
+                    } else {
+                        viewModel.setError("No valid Offnetic link in clipboard")
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = Spacing.xxl)
+                    .height(52.dp),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.5.dp, Color(0x40FFFFFF)),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color.Transparent,
+                    contentColor = Color.White
+                )
+            ) {
+                Text(
+                    text = "Paste link",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = Color.White
                 )
             }
 
             Spacer(modifier = Modifier.height(Spacing.md))
             Text(
                 text = "You can change this anytime in Settings",
-                fontFamily = FontFamilySyne,
-                fontWeight = FontWeight.Medium,
-                fontSize = 12.sp,
+                style = MaterialTheme.typography.bodySmall,
                 color = Color(0x33FFFFFF)
             )
             Spacer(modifier = Modifier.navigationBarsPadding().height(Spacing.xxxl))
@@ -241,7 +336,7 @@ fun QrScannerScreen(
         cameraError?.let { error ->
             Text(
                 text = "Camera error: $error",
-                fontFamily = FontFamilySyne,
+                style = MaterialTheme.typography.bodyMedium,
                 color = Color(0xFFEF4444),
                 modifier = Modifier.align(Alignment.Center).padding(Spacing.lg),
                 textAlign = TextAlign.Center
@@ -254,7 +349,7 @@ fun QrScannerScreen(
                 .align(Alignment.TopStart)
                 .padding(top = Spacing.xxxl, start = Spacing.sm)
         ) {
-            Text("✕", fontFamily = FontFamilySyne, fontWeight = FontWeight.Bold, fontSize = 20.sp, color = Color.White)
+            Text("✕", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = Color.White)
         }
     }
 }

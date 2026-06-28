@@ -32,6 +32,7 @@ class MessageNotificationManager @Inject constructor(
     private val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
     val pendingChatNavigation = MutableStateFlow<String?>(null)
+    val pendingPairingPayload = MutableStateFlow<String?>(null)
 
     init {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

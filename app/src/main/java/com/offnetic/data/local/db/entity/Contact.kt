@@ -9,6 +9,7 @@ data class Contact(
     @PrimaryKey
     val publicKey: String,
     val displayName: String,
+    val nostrPublicKey: String? = null,
     val avatarHash: String? = null,
     val avatarBlob: String? = null,
     val profileTimestamp: Long = 0,

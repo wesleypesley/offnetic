@@ -3,7 +3,6 @@ package com.offnetic.ui.theme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -60,60 +59,27 @@ private val LightColorScheme = androidx.compose.material3.lightColorScheme(
     onErrorContainer = Color(0xFF690005)
 )
 
-val FontFamilySyne = FontFamily(
-    Font(com.offnetic.R.font.syne_variable, FontWeight.Normal),
-    Font(com.offnetic.R.font.syne_variable, FontWeight.Medium),
-    Font(com.offnetic.R.font.syne_variable, FontWeight.SemiBold),
-    Font(com.offnetic.R.font.syne_variable, FontWeight.Bold),
-    Font(com.offnetic.R.font.syne_variable, FontWeight.ExtraBold),
-)
-
-val FontFamilyIBM = FontFamily(
-    Font(com.offnetic.R.font.ibm_plex_sans_regular, FontWeight.Normal),
-    Font(com.offnetic.R.font.ibm_plex_sans_medium, FontWeight.Medium),
-    Font(com.offnetic.R.font.ibm_plex_sans_semibold, FontWeight.SemiBold),
-    Font(com.offnetic.R.font.ibm_plex_sans_bold, FontWeight.Bold),
-)
-
 val Typography = androidx.compose.material3.Typography(
     displayLarge = androidx.compose.material3.Typography().displayLarge.copy(
-        fontFamily = FontFamilySyne, fontWeight = FontWeight.ExtraBold
-    ),
-    headlineLarge = androidx.compose.material3.Typography().headlineLarge.copy(
-        fontFamily = FontFamilySyne, fontWeight = FontWeight.Bold
-    ),
-    headlineMedium = androidx.compose.material3.Typography().headlineMedium.copy(
-        fontFamily = FontFamilySyne, fontWeight = FontWeight.Bold
-    ),
-    headlineSmall = androidx.compose.material3.Typography().headlineSmall.copy(
-        fontFamily = FontFamilySyne, fontWeight = FontWeight.Bold
+        fontFamily = FontFamily.Default, fontWeight = FontWeight.Bold, fontSize = 28.sp
     ),
     titleLarge = androidx.compose.material3.Typography().titleLarge.copy(
-        fontFamily = FontFamilySyne, fontWeight = FontWeight.Bold
+        fontFamily = FontFamily.Default, fontWeight = FontWeight.Bold, fontSize = 22.sp
     ),
     titleMedium = androidx.compose.material3.Typography().titleMedium.copy(
-        fontFamily = FontFamilySyne, fontWeight = FontWeight.SemiBold
-    ),
-    titleSmall = androidx.compose.material3.Typography().titleSmall.copy(
-        fontFamily = FontFamilySyne, fontWeight = FontWeight.SemiBold
+        fontFamily = FontFamily.Default, fontWeight = FontWeight.Medium, fontSize = 18.sp
     ),
     bodyLarge = androidx.compose.material3.Typography().bodyLarge.copy(
-        fontFamily = FontFamilyIBM, fontWeight = FontWeight.Medium
+        fontFamily = FontFamily.Default, fontWeight = FontWeight.Normal, fontSize = 15.sp
     ),
     bodyMedium = androidx.compose.material3.Typography().bodyMedium.copy(
-        fontFamily = FontFamilyIBM, fontWeight = FontWeight.Medium
-    ),
-    bodySmall = androidx.compose.material3.Typography().bodySmall.copy(
-        fontFamily = FontFamilyIBM, fontWeight = FontWeight.Medium
+        fontFamily = FontFamily.Default, fontWeight = FontWeight.Normal, fontSize = 15.sp
     ),
     labelLarge = androidx.compose.material3.Typography().labelLarge.copy(
-        fontFamily = FontFamilyIBM, fontWeight = FontWeight.SemiBold
+        fontFamily = FontFamily.Default, fontWeight = FontWeight.SemiBold, fontSize = 15.sp
     ),
-    labelMedium = androidx.compose.material3.Typography().labelMedium.copy(
-        fontFamily = FontFamilyIBM, fontWeight = FontWeight.SemiBold
-    ),
-    labelSmall = androidx.compose.material3.Typography().labelSmall.copy(
-        fontFamily = FontFamilyIBM, fontWeight = FontWeight.SemiBold
+    bodySmall = androidx.compose.material3.Typography().bodySmall.copy(
+        fontFamily = FontFamily.Default, fontWeight = FontWeight.Medium, fontSize = 12.sp
     )
 )
 

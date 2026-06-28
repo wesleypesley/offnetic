@@ -22,6 +22,9 @@ interface ContactDao {
     @Query("SELECT * FROM contacts WHERE publicKey = :publicKey")
     suspend fun getByPublicKey(publicKey: String): Contact?
 
+    @Query("SELECT * FROM contacts WHERE nostrPublicKey = :nostrPublicKey LIMIT 1")
+    suspend fun getByNostrPublicKey(nostrPublicKey: String): Contact?
+
     @Query("SELECT * FROM contacts ORDER BY displayName ASC")
     fun getAll(): Flow<List<Contact>>
 

@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -27,7 +28,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.offnetic.ui.theme.FontFamilyIBM
 import com.offnetic.ui.theme.Spacing
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -53,8 +53,7 @@ fun CallsScreen(
                 Text(
                     "No calls yet",
                     color = Color(0xFF666666),
-                    fontFamily = FontFamilyIBM,
-                    fontSize = 14.sp
+                    style = MaterialTheme.typography.bodyMedium
                 )
             }
         } else {
@@ -90,7 +89,6 @@ private fun CallRow(summary: CallSummary, onClick: () -> Unit) {
             Text(
                 summary.displayName.take(2).uppercase(),
                 color = Color(0xFF888888),
-                fontFamily = FontFamilyIBM,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -102,9 +100,7 @@ private fun CallRow(summary: CallSummary, onClick: () -> Unit) {
             Text(
                 summary.displayName,
                 color = Color.White,
-                fontFamily = FontFamilyIBM,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Medium
+                style = MaterialTheme.typography.labelLarge
             )
             Spacer(modifier = Modifier.height(Spacing.xxs))
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -120,15 +116,13 @@ private fun CallRow(summary: CallSummary, onClick: () -> Unit) {
                 Text(
                     typeIcon,
                     color = typeColor,
-                    fontFamily = FontFamilyIBM,
                     fontSize = 14.sp
                 )
                 Spacer(modifier = Modifier.width(Spacing.xs))
                 Text(
                     formatCallType(summary),
                     color = Color(0xFF888888),
-                    fontFamily = FontFamilyIBM,
-                    fontSize = 13.sp
+                    style = MaterialTheme.typography.bodySmall
                 )
             }
         }
@@ -136,8 +130,7 @@ private fun CallRow(summary: CallSummary, onClick: () -> Unit) {
         Text(
             formatTimestamp(summary.lastCallTimestamp),
             color = Color(0xFF666666),
-            fontFamily = FontFamilyIBM,
-            fontSize = 12.sp
+            style = MaterialTheme.typography.bodySmall
         )
     }
 }

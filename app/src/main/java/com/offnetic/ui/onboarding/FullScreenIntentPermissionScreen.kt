@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -38,7 +39,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import com.offnetic.ui.theme.FontFamilySyne
 import com.offnetic.ui.theme.Spacing
 
 @Composable
@@ -88,9 +88,7 @@ fun FullScreenIntentPermissionScreen(
             ) {
                 Text(
                     text = "INCOMING CALLS",
-                    fontFamily = FontFamilySyne,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 11.sp,
+                    style = MaterialTheme.typography.labelSmall,
                     letterSpacing = 2.5.sp,
                     color = Color(0x4DFFFFFF)
                 )
@@ -99,23 +97,16 @@ fun FullScreenIntentPermissionScreen(
 
                 Text(
                     text = "Show calls\non screen",
-                    fontFamily = FontFamilySyne,
-                    fontWeight = FontWeight.ExtraBold,
-                    fontSize = 36.sp,
-                    color = Color.White,
-                    lineHeight = 41.sp,
-                    letterSpacing = (-1).sp
+                    style = MaterialTheme.typography.displayLarge,
+                    color = Color.White
                 )
 
                 Spacer(modifier = Modifier.height(Spacing.lg))
 
                 Text(
                     text = "Allow Offnetic to display incoming calls on your screen, even when the phone is locked. This requires a one-time toggle in Settings.",
-                    fontFamily = FontFamilySyne,
-                    fontWeight = FontWeight.Normal,
-                    fontSize = 15.sp,
-                    color = Color(0x73FFFFFF),
-                    lineHeight = 25.sp
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0x73FFFFFF)
                 )
             }
 
@@ -143,9 +134,7 @@ fun FullScreenIntentPermissionScreen(
                 ) {
                     Text(
                         text = "Open Settings",
-                        fontFamily = FontFamilySyne,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp
+                        style = MaterialTheme.typography.labelLarge
                     )
                 }
 
@@ -157,9 +146,7 @@ fun FullScreenIntentPermissionScreen(
                 ) {
                     Text(
                         text = "Skip for now",
-                        fontFamily = FontFamilySyne,
-                        fontWeight = FontWeight.Medium,
-                        fontSize = 12.sp,
+                        style = MaterialTheme.typography.bodySmall,
                         color = Color(0x33FFFFFF),
                         textAlign = TextAlign.Center
                     )

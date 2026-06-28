@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextFieldDefaults
@@ -26,7 +27,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.offnetic.ui.theme.FontFamilySyne
 import com.offnetic.ui.theme.Spacing
 import androidx.hilt.navigation.compose.hiltViewModel
 
@@ -67,9 +67,7 @@ fun ProfileSetupScreen(
         ) {
             Text(
                 text = "SET UP PROFILE",
-                fontFamily = FontFamilySyne,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 11.sp,
+                style = MaterialTheme.typography.labelSmall,
                 letterSpacing = 2.5.sp,
                 color = Color(0x4DFFFFFF)
             )
@@ -78,32 +76,23 @@ fun ProfileSetupScreen(
 
             Text(
                 text = "How should people see you?",
-                fontFamily = FontFamilySyne,
-                fontWeight = FontWeight.ExtraBold,
-                fontSize = 34.sp,
-                color = Color.White,
-                letterSpacing = (-1).sp,
-                lineHeight = 40.sp
+                style = MaterialTheme.typography.displayLarge,
+                color = Color.White
             )
 
             Spacer(modifier = Modifier.height(Spacing.sm))
 
             Text(
                 text = "Your name is only visible to trusted contacts you\u2019ve paired with.",
-                fontFamily = FontFamilySyne,
-                fontWeight = FontWeight.Normal,
-                fontSize = 15.sp,
-                color = Color(0x59FFFFFF),
-                lineHeight = 25.sp
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color(0x59FFFFFF)
             )
 
             Spacer(modifier = Modifier.height(Spacing.xxxl))
 
             Text(
                 text = "USERNAME",
-                fontFamily = FontFamilySyne,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 11.sp,
+                style = MaterialTheme.typography.labelSmall,
                 letterSpacing = 1.5.sp,
                 color = Color(0x4DFFFFFF)
             )
@@ -116,7 +105,7 @@ fun ProfileSetupScreen(
                 placeholder = {
                     Text(
                         "Enter a username",
-                        fontFamily = FontFamilySyne,
+                        style = MaterialTheme.typography.bodyLarge,
                         color = Color(0x40FFFFFF)
                     )
                 },
@@ -132,36 +121,26 @@ fun ProfileSetupScreen(
                     unfocusedBorderColor = if (showError) Color(0xFFEF4444) else Color(0x1AFFFFFF),
                     containerColor = Color(0x0DFFFFFF)
                 ),
-                textStyle = androidx.compose.ui.text.TextStyle(
-                    fontFamily = FontFamilySyne,
-                    fontWeight = FontWeight.Medium,
-                    fontSize = 16.sp
-                ),
+                textStyle = MaterialTheme.typography.bodyLarge,
                 supportingText = {
                     Column {
                         if (showError) {
                             Text(
                                 text = "Only letters, numbers, and underscores",
-                                fontFamily = FontFamilySyne,
-                                fontWeight = FontWeight.Medium,
-                                fontSize = 12.sp,
+                                style = MaterialTheme.typography.bodySmall,
                                 color = Color(0xFFEF4444)
                             )
                         } else {
                             Text(
                                 text = "Letters, numbers, and underscores only",
-                                fontFamily = FontFamilySyne,
-                                fontWeight = FontWeight.Medium,
-                                fontSize = 12.sp,
+                                style = MaterialTheme.typography.bodySmall,
                                 color = Color(0x33FFFFFF)
                             )
                         }
                         Spacer(modifier = Modifier.height(Spacing.xs))
                         Text(
                             text = "\u26A0 This cannot be changed later.",
-                            fontFamily = FontFamilySyne,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 12.sp,
+                            style = MaterialTheme.typography.bodySmall,
                             color = Color(0xFFF59E0B)
                         )
                     }
@@ -189,9 +168,7 @@ fun ProfileSetupScreen(
             ) {
                 Text(
                     text = "Enter Offnetic",
-                    fontFamily = FontFamilySyne,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp
+                    style = MaterialTheme.typography.labelLarge
                 )
             }
 

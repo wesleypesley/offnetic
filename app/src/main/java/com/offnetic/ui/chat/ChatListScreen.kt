@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -22,9 +23,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.ui.res.painterResource
 import com.offnetic.R
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -33,15 +37,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.offnetic.ui.theme.FontFamilyIBM
 import com.offnetic.ui.theme.Spacing
-import com.offnetic.ui.theme.FontFamilySyne
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -50,6 +53,7 @@ import java.util.Locale
 fun ChatListScreen(
     onChatClick: (String) -> Unit = {},
     onScanQr: () -> Unit = {},
+    onRequests: () -> Unit = {},
     onNearbyClick: () -> Unit = {},
     onShutdown: () -> Unit = {},
     viewModel: ChatListViewModel = hiltViewModel()
@@ -62,6 +66,7 @@ fun ChatListScreen(
             ChatListContent(
                 onChatClick = onChatClick,
                 onScanQr = onScanQr,
+                onRequests = onRequests,
                 onShutdown = onShutdown,
                 viewModel = viewModel
             )
@@ -73,23 +78,27 @@ fun ChatListScreen(
 fun ChatListContent(
     onChatClick: (String) -> Unit = {},
     onScanQr: () -> Unit = {},
+    onRequests: () -> Unit = {},
     onShutdown: () -> Unit = {},
     viewModel: ChatListViewModel
 ) {
     val chatSummaries by viewModel.chatSummaries.collectAsState()
     val profileDisplayName by viewModel.profileDisplayName.collectAsState()
+    val pendingRequestCount by viewModel.pendingRequestCount.collectAsState()
     var showProfileDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier.fillMaxSize()
     ) {
-        Header(
-            onScanQr = onScanQr,
-            onShutdown = onShutdown,
-            onShowProfile = { showProfileDialog = true },
-            isDiscovering = true,
-            profileDisplayName = profileDisplayName
-        )
+            Header(
+                onScanQr = onScanQr,
+                onRequests = onRequests,
+                onShutdown = onShutdown,
+                onShowProfile = { showProfileDialog = true },
+                isDiscovering = true,
+                profileDisplayName = profileDisplayName,
+                pendingRequestCount = pendingRequestCount
+            )
 
         LazyColumn(
             modifier = Modifier
@@ -132,9 +141,7 @@ private fun ProfileDialog(
         title = {
             Text(
                 text = "Profile",
-                fontFamily = FontFamilySyne,
-                fontWeight = FontWeight.Bold,
-                fontSize = 20.sp,
+                style = MaterialTheme.typography.titleLarge,
                 color = Color.White
             )
         },
@@ -142,18 +149,14 @@ private fun ProfileDialog(
             Column {
                 Text(
                     text = "Username",
-                    fontFamily = FontFamilyIBM,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 11.sp,
+                    style = MaterialTheme.typography.labelSmall,
                     letterSpacing = 1.5.sp,
                     color = Color(0x40FFFFFF)
                 )
                 Spacer(modifier = Modifier.height(Spacing.sm))
                 Text(
                     text = displayName,
-                    fontFamily = FontFamilyIBM,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 18.sp,
+                    style = MaterialTheme.typography.titleMedium,
                     color = Color.White
                 )
             }
@@ -162,8 +165,7 @@ private fun ProfileDialog(
             androidx.compose.material3.TextButton(onClick = onDismiss) {
                 Text(
                     text = "Close",
-                    fontFamily = FontFamilyIBM,
-                    fontWeight = FontWeight.SemiBold,
+                    style = MaterialTheme.typography.labelLarge,
                     color = Color(0xFF3B82F6)
                 )
             }
@@ -174,10 +176,12 @@ private fun ProfileDialog(
 @Composable
 private fun Header(
     onScanQr: () -> Unit,
+    onRequests: () -> Unit = {},
     onShutdown: () -> Unit = {},
     onShowProfile: () -> Unit = {},
     isDiscovering: Boolean,
-    profileDisplayName: String = ""
+    profileDisplayName: String = "",
+    pendingRequestCount: Int = 0
 ) {
     Column(
         modifier = Modifier
@@ -192,11 +196,8 @@ private fun Header(
             Column {
                 Text(
                     text = "Offnetic",
-                    fontFamily = FontFamilySyne,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 22.sp,
-                    color = Color.White,
-                    letterSpacing = (-0.5).sp
+                    style = MaterialTheme.typography.titleLarge,
+                    color = Color.White
                 )
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -210,9 +211,7 @@ private fun Header(
                     Spacer(modifier = Modifier.width(Spacing.sm))
                     Text(
                         text = if (isDiscovering) "Discovering nearby" else "Offline",
-                        fontFamily = FontFamilyIBM,
-                        fontWeight = FontWeight.Medium,
-                        fontSize = 12.sp,
+                        style = MaterialTheme.typography.bodySmall,
                         color = Color(0x4DFFFFFF)
                     )
                 }
@@ -220,6 +219,7 @@ private fun Header(
 
             Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 QrButton(onClick = onScanQr)
+                RequestsButton(onClick = onRequests, badgeCount = pendingRequestCount)
                 ShutdownButton(onClick = onShutdown)
                 GearButton(onClick = onShowProfile)
             }
@@ -248,6 +248,46 @@ private fun QrButton(onClick: () -> Unit) {
 }
 
 @Composable
+private fun RequestsButton(onClick: () -> Unit, badgeCount: Int) {
+    Box(modifier = Modifier.size(38.dp)) {
+        Surface(
+            modifier = Modifier
+                .size(38.dp)
+                .clickable { onClick() },
+            shape = RoundedCornerShape(12.dp),
+            color = Color(0x12FFFFFF)
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = Icons.Default.Person,
+                    contentDescription = "Requests",
+                    tint = Color(0xB3FFFFFF),
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+        if (badgeCount > 0) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .offset(x = 2.dp, y = (-2).dp)
+                    .size(16.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFEF4444)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = badgeCount.toString(),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 9.sp,
+                    color = Color.White
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun AvatarInitial(initial: String) {
     Surface(
         modifier = Modifier.size(38.dp),
@@ -257,7 +297,6 @@ private fun AvatarInitial(initial: String) {
         Box(contentAlignment = Alignment.Center) {
             Text(
                 text = initial,
-                fontFamily = FontFamilyIBM,
                 fontWeight = FontWeight.Bold,
                 fontSize = 14.sp,
                 color = Color(0xB3FFFFFF)
@@ -316,9 +355,7 @@ private fun EmptyState() {
     ) {
         Text(
             text = "No conversations yet",
-            fontFamily = FontFamilyIBM,
-            fontWeight = FontWeight.Medium,
-            fontSize = 15.sp,
+            style = MaterialTheme.typography.bodyMedium,
             color = Color(0x40FFFFFF)
         )
     }
@@ -344,7 +381,6 @@ private fun ChatListItem(
             Box(contentAlignment = Alignment.Center) {
                 Text(
                     text = summary.displayName.take(2).uppercase(),
-                    fontFamily = FontFamilyIBM,
                     fontWeight = FontWeight.Bold,
                     fontSize = 17.sp,
                     color = Color(0x99FFFFFF)
@@ -364,39 +400,37 @@ private fun ChatListItem(
                     modifier = Modifier.weight(1f),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    if (summary.isOnline) {
+                    val statusColor = when (summary.reachability) {
+                        com.offnetic.domain.model.ChatReachability.LOCAL -> Color(0xFF4ADE80)
+                        com.offnetic.domain.model.ChatReachability.INTERNET_RELAY -> Color(0xFF60A5FA)
+                        com.offnetic.domain.model.ChatReachability.OFFLINE -> null
+                    }
+                    if (statusColor != null) {
                         Box(
                             modifier = Modifier
                                 .size(6.dp)
-                                .background(Color(0xFF4ADE80), CircleShape)
+                                .background(statusColor, CircleShape)
                         )
                         Spacer(modifier = Modifier.width(Spacing.sm))
                     }
                     Text(
                         text = summary.displayName,
-                        fontFamily = FontFamilyIBM,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 15.sp,
+                        style = MaterialTheme.typography.labelLarge,
                         color = Color.White,
-                        letterSpacing = (-0.2).sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
                 Text(
                     text = formatTimestamp(summary.lastTimestamp),
-                    fontFamily = FontFamilyIBM,
-                    fontWeight = FontWeight.Medium,
-                    fontSize = 11.sp,
+                    style = MaterialTheme.typography.bodySmall,
                     color = Color(0x40FFFFFF)
                 )
             }
             Spacer(modifier = Modifier.height(Spacing.xxs))
             Text(
                 text = summary.lastMessage,
-                fontFamily = FontFamilyIBM,
-                fontWeight = FontWeight.Medium,
-                fontSize = 13.sp,
+                style = MaterialTheme.typography.bodySmall,
                 color = Color(0x4DFFFFFF),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis

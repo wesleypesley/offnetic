@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -28,8 +29,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.offnetic.ui.theme.FontFamilyIBM
-import com.offnetic.ui.theme.FontFamilySyne
 import com.offnetic.ui.theme.Spacing
 
 @Composable
@@ -48,7 +47,7 @@ fun SettingsScreen(
                 horizontalArrangement = Arrangement.Start
             ) {
                 TextButton(onClick = onBack) {
-                    Text("← Back", fontFamily = FontFamilyIBM, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = Color.White)
+                    Text("← Back", style = MaterialTheme.typography.labelLarge, color = Color.White)
                 }
             }
             SettingsContent()
@@ -71,9 +70,7 @@ fun SettingsContent(
         Spacer(modifier = Modifier.height(Spacing.md))
         Text(
             text = "Settings",
-            fontFamily = FontFamilySyne,
-            fontWeight = FontWeight.Bold,
-            fontSize = 22.sp,
+            style = MaterialTheme.typography.titleLarge,
             color = Color.White
         )
         Spacer(modifier = Modifier.height(Spacing.xxl))
@@ -92,9 +89,7 @@ fun SettingsContent(
 private fun SectionHeader(title: String) {
     Text(
         text = title.uppercase(),
-        fontFamily = FontFamilySyne,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 11.sp,
+        style = MaterialTheme.typography.labelSmall,
         letterSpacing = 1.5.sp,
         color = Color(0x40FFFFFF),
         modifier = Modifier.padding(vertical = Spacing.xs)
@@ -113,8 +108,8 @@ private fun ToggleRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(title, fontFamily = FontFamilyIBM, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = Color.White)
-            Text(subtitle, fontFamily = FontFamilyIBM, fontWeight = FontWeight.Medium, fontSize = 12.sp, color = Color(0x40FFFFFF))
+            Text(title, style = MaterialTheme.typography.labelLarge, color = Color.White)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = Color(0x40FFFFFF))
         }
         Spacer(modifier = Modifier.width(Spacing.md))
         Switch(
@@ -137,9 +132,9 @@ private fun NavRow(title: String, subtitle: String, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(title, fontFamily = FontFamilyIBM, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = Color.White)
-            Text(subtitle, fontFamily = FontFamilyIBM, fontWeight = FontWeight.Medium, fontSize = 12.sp, color = Color(0x40FFFFFF))
+            Text(title, style = MaterialTheme.typography.labelLarge, color = Color.White)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = Color(0x40FFFFFF))
         }
-        Text("→", fontFamily = FontFamilyIBM, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color(0x40FFFFFF))
+        Text("→", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color(0x40FFFFFF))
     }
 }

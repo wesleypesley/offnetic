@@ -1,6 +1,7 @@
 package com.offnetic.di
 
 import android.content.Context
+import android.net.ConnectivityManager
 import android.net.wifi.WifiManager
 import dagger.Module
 import dagger.Provides
@@ -17,4 +18,11 @@ object SystemModule {
     fun provideWifiManager(
         @dagger.hilt.android.qualifiers.ApplicationContext context: Context
     ): WifiManager = context.getSystemService(Context.WIFI_SERVICE) as WifiManager
+
+    @Provides
+    @Singleton
+    fun provideConnectivityManager(
+        @dagger.hilt.android.qualifiers.ApplicationContext context: Context
+    ): ConnectivityManager =
+        context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
 }

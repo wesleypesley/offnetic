@@ -11,7 +11,18 @@ import com.offnetic.data.crypto.SignalProtocolManager
 import com.offnetic.data.local.db.dao.ContactDao
 import com.offnetic.data.local.db.dao.IdentityDao
 import com.offnetic.data.local.db.dao.MessageDao
+import com.offnetic.data.local.db.dao.PendingRequestDao
+import com.offnetic.data.local.db.dao.ProfileDao
+import com.offnetic.data.local.db.dao.RelayOutboxDao
+import com.offnetic.data.local.db.entity.PendingRequestEntity
+import com.offnetic.data.local.db.entity.RequestDirection
+import com.offnetic.data.relay.RelayControlSender
+import com.offnetic.data.relay.RelayOutboxProcessor
+import com.offnetic.data.relay.RelayRequestManager
 import com.offnetic.data.nearby.NcapManager
+import com.offnetic.data.network.NetworkMonitor
+import com.offnetic.domain.model.ChatReachability
+import com.offnetic.domain.model.MessageDeliveryState
 import com.offnetic.ui.navigation.Routes
 import com.offnetic.util.ActiveChatTracker
 import com.offnetic.util.MessageNotificationManager
@@ -25,6 +36,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -33,6 +45,10 @@ import org.json.JSONObject
 import timber.log.Timber
 import java.io.File
 import javax.inject.Inject
+
+private const val RELAY_OUTBOX_TTL_MS = 7L * 24 * 60 * 60 * 1000
+private const val RELAY_OUTBOX_CAP = 50
+private const val CONNECTION_REQUEST_TTL_MS = 72L * 60 * 60 * 1000
 
 data class ChatUiState(
     val messages: List<com.offnetic.domain.model.Message> = emptyList(),
@@ -47,8 +63,14 @@ class ChatViewModel @Inject constructor(
     private val messageDao: MessageDao,
     private val identityDao: IdentityDao,
     private val contactDao: ContactDao,
+    private val profileDao: ProfileDao,
+    private val relayOutboxDao: RelayOutboxDao,
+    private val pendingRequestDao: PendingRequestDao,
+    private val relayControlSender: RelayControlSender,
+    private val relayOutboxProcessor: RelayOutboxProcessor,
     private val signalProtocolManager: SignalProtocolManager,
     private val ncapManager: NcapManager,
+    private val networkMonitor: NetworkMonitor,
     private val voiceNoteRecorder: VoiceNoteRecorder,
     private val activeChatTracker: ActiveChatTracker,
     private val messageNotificationManager: MessageNotificationManager,
@@ -60,8 +82,23 @@ class ChatViewModel @Inject constructor(
     private val _contactName = MutableStateFlow(contactPublicKey.take(12) + "...")
     val contactName: StateFlow<String> = _contactName.asStateFlow()
 
-    private val _isContactOnline = MutableStateFlow(false)
-    val isContactOnline: StateFlow<Boolean> = _isContactOnline.asStateFlow()
+    private val _relayEligible = MutableStateFlow(false)
+
+    val reachability: StateFlow<ChatReachability> =
+        combine(ncapManager.peers, networkMonitor.isOnline, _relayEligible) { peers, online, relayEligible ->
+            ChatReachability.forPeer(
+                contactPublicKey = contactPublicKey,
+                peers = peers,
+                online = online,
+                relayEligible = relayEligible
+            )
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ChatReachability.OFFLINE)
+
+    init {
+        viewModelScope.launch {
+            _relayEligible.value = contactDao.getByPublicKey(contactPublicKey)?.nostrPublicKey != null
+        }
+    }
 
     private val _myPublicKey = MutableStateFlow("")
     val myPublicKey: StateFlow<String> = _myPublicKey.asStateFlow()
@@ -104,8 +141,14 @@ class ChatViewModel @Inject constructor(
             val myPk = myIdentity?.publicKey ?: return@launch
             _myPublicKey.value = myPk
             ncapManager.incomingMessages.collect { msg ->
-                if (msg.chatId == contactPublicKey) {
+                if (msg.chatId == contactPublicKey && activeChatTracker.activeChatKey == contactPublicKey) {
                     messageDao.markAsRead(contactPublicKey, myPk)
+                    if (msg.messageUuid.isNotEmpty()) {
+                        ncapManager.sendReadReceipt(contactPublicKey, msg.messageUuid)
+                        contactDao.getByPublicKey(contactPublicKey)?.nostrPublicKey?.let {
+                            relayControlSender.sendReadReceipt(it, msg.messageUuid)
+                        }
+                    }
                 }
             }
         }
@@ -122,7 +165,6 @@ class ChatViewModel @Inject constructor(
                     retryUnsentMessages()
                 }
                 wasOnline = isNowOnline
-                _isContactOnline.value = isNowOnline
             }
         }
     }
@@ -161,7 +203,7 @@ class ChatViewModel @Inject constructor(
                     content = "File: ${file.name}",
                     type = com.offnetic.data.local.db.entity.Message.TYPE_FILE,
                     timestamp = System.currentTimeMillis(),
-                    isSent = false,
+                    deliveryState = MessageDeliveryState.SAVED,
                     isRead = false,
                     attachmentPath = file.absolutePath
                 )
@@ -178,7 +220,7 @@ class ChatViewModel @Inject constructor(
                     )
                     val current = messageDao.getById(messageId)
                     if (current?.type != com.offnetic.data.local.db.entity.Message.TYPE_CANCELLED) {
-                        messageDao.update(entity.copy(id = messageId, isSent = true))
+                        messageDao.update(entity.copy(id = messageId, deliveryState = MessageDeliveryState.SENT_LOCAL))
                     }
                     Timber.d("File sent via NCAPI to ${contactPublicKey.take(8)}")
                     withContext(Dispatchers.IO) { file.delete() }
@@ -211,7 +253,7 @@ class ChatViewModel @Inject constructor(
                         content = "Voice note  $duration",
                         type = com.offnetic.data.local.db.entity.Message.TYPE_VOICE_NOTE,
                         timestamp = System.currentTimeMillis(),
-                        isSent = false,
+                        deliveryState = MessageDeliveryState.SAVED,
                         isRead = false,
                         attachmentPath = file.absolutePath
                     )
@@ -230,7 +272,7 @@ class ChatViewModel @Inject constructor(
                             )
                             val current = messageDao.getById(messageId)
                             if (current?.type != com.offnetic.data.local.db.entity.Message.TYPE_CANCELLED) {
-                                messageDao.update(entity.copy(id = messageId, isSent = true))
+                                messageDao.update(entity.copy(id = messageId, deliveryState = MessageDeliveryState.SENT_LOCAL))
                             }
                             Timber.d("Voice note sent to ${contactPublicKey.take(8)}")
                         } catch (e: Exception) {
@@ -268,9 +310,19 @@ class ChatViewModel @Inject constructor(
         viewModelScope.launch {
             val identity = identityDao.getIdentity()
             val myPk = identity?.publicKey ?: return@launch
+            val unreadUuids = messageDao.getUnreadIncomingUuids(contactPublicKey, myPk)
             messageDao.markAsRead(contactPublicKey, myPk)
+            if (unreadUuids.isNotEmpty()) {
+                val npub = contactDao.getByPublicKey(contactPublicKey)?.nostrPublicKey
+                unreadUuids.forEach { uuid ->
+                    if (npub != null) relayControlSender.sendReadReceipt(npub, uuid)
+                    ncapManager.sendReadReceipt(contactPublicKey, uuid)
+                }
+            }
         }
     }
+
+    private var connectingToastShown = false
 
     private fun sendEncrypted(plaintext: ByteArray, type: Int, content: String) {
         Timber.d("sendEncrypted: type=$type, size=${plaintext.size}, peer=${contactPublicKey.take(8)}...")
@@ -289,11 +341,41 @@ class ChatViewModel @Inject constructor(
                     content = content,
                     type = type,
                     timestamp = System.currentTimeMillis(),
-                    isSent = false,
+                    deliveryState = MessageDeliveryState.SAVED,
                     isRead = false
                 )
                 val messageId = messageDao.insert(entity)
-                Timber.d("sendEncrypted: inserted msg id=$messageId (isSent=false)")
+                Timber.d("sendEncrypted: inserted id=$messageId uuid=${entity.messageUuid.take(8)} (SAVED)")
+
+                if (!signalProtocolManager.hasSession(contactPublicKey)) {
+                    val contact = contactDao.getByPublicKey(contactPublicKey)
+                    val nostrPub = contact?.nostrPublicKey
+                    if (nostrPub != null) {
+                        val bundle = signalProtocolManager.buildPreKeyBundleBytes()
+                        val myName = profileDao.getByPublicKey(myPublicKey)?.displayName ?: myPublicKey.take(12) + "..."
+                        val now = System.currentTimeMillis()
+                        pendingRequestDao.upsert(
+                            PendingRequestEntity(
+                                requestId = RelayRequestManager.OUTBOUND_PREFIX + nostrPub,
+                                direction = RequestDirection.OUTBOUND,
+                                peerOffneticKey = contactPublicKey,
+                                peerNostrKey = nostrPub,
+                                displayName = contact.displayName,
+                                createdAt = now,
+                                expiresAt = now + CONNECTION_REQUEST_TTL_MS
+                            )
+                        )
+                        relayControlSender.sendConnectionRequest(nostrPub, myPublicKey, myName, bundle)
+                        Timber.d("sendEncrypted: uuid=${entity.messageUuid.take(8)} no session — sent connection request + tracked outbound")
+                        if (!connectingToastShown) {
+                            connectingToastShown = true
+                            _toastMessage.emit("${_contactName.value} not nearby — connecting over the internet")
+                        }
+                    } else {
+                        _toastMessage.emit("${_contactName.value} not connected — message saved")
+                    }
+                    return@launch
+                }
 
                 val ciphertext = signalProtocolManager.encryptMessage(contactPublicKey, plaintext)
                 Timber.d("sendEncrypted: encrypted ${plaintext.size}B → ${ciphertext.size}B")
@@ -301,7 +383,8 @@ class ChatViewModel @Inject constructor(
                 val envelope = NcapEnvelope.Plain(
                     senderPublicKey = myPublicKey,
                     payloadType = NcapEnvelope.PayloadType.SIGNAL_MESSAGE,
-                    payload = ciphertext
+                    payload = ciphertext,
+                    messageUuid = entity.messageUuid
                 )
 
                 val connectedEndpoints = ncapManager.getConnectedEndpointIds(contactPublicKey)
@@ -311,13 +394,31 @@ class ChatViewModel @Inject constructor(
                     ncapManager.sendPayload(endpointId, envelope.toBytes())
                     val current = messageDao.getById(messageId)
                     if (current?.type != com.offnetic.data.local.db.entity.Message.TYPE_CANCELLED) {
-                        messageDao.update(entity.copy(id = messageId, isSent = true))
+                        messageDao.update(entity.copy(id = messageId, deliveryState = MessageDeliveryState.SENT_LOCAL))
                     }
-                    Timber.d("sendEncrypted: sent + marked isSent=true for msg id=$messageId")
+                    Timber.d("sendEncrypted: sent + marked SENT_LOCAL for msg id=$messageId")
                 } else {
-                    val anyPeer = ncapManager.peers.value.find { it.publicKey == contactPublicKey }
-                    Timber.w("sendEncrypted: no CONNECTED endpoint for ${contactPublicKey.take(8)} (found=${anyPeer != null}, state=${anyPeer?.connectionState}), saved to DB")
-                    _toastMessage.emit("${_contactName.value} not connected — message saved")
+                    val nostrKey = contactDao.getByPublicKey(contactPublicKey)?.nostrPublicKey
+                    val current = messageDao.getById(messageId)
+                    val cancelled = current?.type == com.offnetic.data.local.db.entity.Message.TYPE_CANCELLED
+                    if (nostrKey != null && !cancelled) {
+                        val now = System.currentTimeMillis()
+                        relayOutboxDao.upsert(
+                            com.offnetic.data.local.db.entity.RelayOutboxEntity(
+                                messageUuid = entity.messageUuid,
+                                chatId = contactPublicKey,
+                                ciphertext = ciphertext,
+                                createdAt = now,
+                                expiresAt = now + RELAY_OUTBOX_TTL_MS
+                            )
+                        )
+                        relayOutboxDao.evictOldestPending(contactPublicKey, RELAY_OUTBOX_CAP)
+                        messageDao.update(entity.copy(id = messageId, deliveryState = MessageDeliveryState.SENT_RELAY))
+                        Timber.d("sendEncrypted: uuid=${entity.messageUuid.take(8)} enqueued to relay outbox (SENT_RELAY)")
+                        withContext(Dispatchers.IO) { relayOutboxProcessor.processPending() }
+                    } else {
+                        _toastMessage.emit("${_contactName.value} not connected — message saved")
+                    }
                 }
             } catch (e: Exception) {
                 Timber.e(e, "sendEncrypted FAILED: ${e.message}")
@@ -356,7 +457,7 @@ class ChatViewModel @Inject constructor(
                             )
                             ncapManager.sendPayload(endpointId, envelope.toBytes())
                             if (messageDao.getById(msg.id)?.type != com.offnetic.data.local.db.entity.Message.TYPE_CANCELLED) {
-                                messageDao.update(msg.copy(isSent = true))
+                                messageDao.update(msg.copy(deliveryState = MessageDeliveryState.SENT_LOCAL))
                             }
                             Timber.d("retryUnsentMessages: resent text msg id=${msg.id}")
                         }
@@ -366,7 +467,7 @@ class ChatViewModel @Inject constructor(
                             val file = java.io.File(path)
                             ncapManager.sendFile(endpointId, path, file.name, file.length(), mimeTypeFor(file.name))
                             if (messageDao.getById(msg.id)?.type != com.offnetic.data.local.db.entity.Message.TYPE_CANCELLED) {
-                                messageDao.update(msg.copy(isSent = true))
+                                messageDao.update(msg.copy(deliveryState = MessageDeliveryState.SENT_LOCAL))
                             }
                             Timber.d("retryUnsentMessages: resent file msg id=${msg.id}")
                         }
@@ -377,7 +478,7 @@ class ChatViewModel @Inject constructor(
                             val duration = msg.content.removePrefix("Voice note").trim()
                             ncapManager.sendFile(endpointId, path, file.name, file.length(), "audio/mp4", duration)
                             if (messageDao.getById(msg.id)?.type != com.offnetic.data.local.db.entity.Message.TYPE_CANCELLED) {
-                                messageDao.update(msg.copy(isSent = true))
+                                messageDao.update(msg.copy(deliveryState = MessageDeliveryState.SENT_LOCAL))
                             }
                             Timber.d("retryUnsentMessages: resent voice note msg id=${msg.id}")
                         }
@@ -459,10 +560,10 @@ class ChatViewModel @Inject constructor(
                 val msg = messageDao.getById(messageId) ?: return@launch
                 messageDao.update(
                     com.offnetic.data.local.db.entity.Message(
-                        id = msg.id, sessionId = msg.sessionId, chatId = msg.chatId,
+                        id = msg.id, messageUuid = msg.messageUuid, sessionId = msg.sessionId, chatId = msg.chatId,
                         senderPublicKey = msg.senderPublicKey, content = "Message cancelled",
                         type = com.offnetic.data.local.db.entity.Message.TYPE_CANCELLED,
-                        timestamp = msg.timestamp, isSent = false, isRead = false,
+                        timestamp = msg.timestamp, deliveryState = MessageDeliveryState.SAVED, isRead = false,
                         attachmentPath = msg.attachmentPath, attachmentType = msg.attachmentType
                     )
                 )
@@ -479,7 +580,7 @@ class ChatViewModel @Inject constructor(
                     put("timestamp", System.currentTimeMillis())
                 }
                 val plaintext = json.toString().toByteArray(Charsets.UTF_8)
-                val entity = msg.copy(type = com.offnetic.data.local.db.entity.Message.TYPE_TEXT, isSent = false)
+                val entity = msg.copy(type = com.offnetic.data.local.db.entity.Message.TYPE_TEXT, deliveryState = MessageDeliveryState.SAVED)
                 messageDao.update(entity)
                 sendEncrypted(plaintext, com.offnetic.data.local.db.entity.Message.TYPE_TEXT, msg.content)
             } else if (msg.type == com.offnetic.data.local.db.entity.Message.TYPE_FILE ||
@@ -493,7 +594,7 @@ class ChatViewModel @Inject constructor(
                             com.offnetic.data.local.db.entity.Message.TYPE_VOICE_NOTE -> msg.type
                             else -> com.offnetic.data.local.db.entity.Message.TYPE_FILE
                         },
-                        isSent = false
+                        deliveryState = MessageDeliveryState.SAVED
                     )
                     messageDao.update(entity)
                     val connected = ncapManager.getConnectedEndpointIds(contactPublicKey)
@@ -502,7 +603,7 @@ class ChatViewModel @Inject constructor(
                         val mime = if (msg.type == com.offnetic.data.local.db.entity.Message.TYPE_VOICE_NOTE) "audio/mp4"
                             else mimeTypeFor(file.name)
                         ncapManager.sendFile(connected.first(), path, file.name, file.length(), mime)
-                        messageDao.update(entity.copy(isSent = true))
+                        messageDao.update(entity.copy(deliveryState = MessageDeliveryState.SENT_LOCAL))
                     } else {
                         _toastMessage.emit("${_contactName.value} not connected")
                     }

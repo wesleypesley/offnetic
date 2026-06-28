@@ -57,6 +57,13 @@ android {
 
     kotlinOptions { jvmTarget = "11" }
 
+    testOptions {
+        unitTests {
+            isReturnDefaultValues = true
+            isIncludeAndroidResources = true
+        }
+    }
+
     signingConfigs {
         create("release") {
             storeFile = file("offnetic-release.jks")
@@ -272,6 +279,8 @@ dependencies {
     implementation(libs.mlkit.barcode.scanning)
     implementation(libs.webrtc)
     implementation(libs.zxing.core)
+    implementation(libs.secp256k1.jni.android)
+    implementation(libs.okhttp)
 
     coreLibraryDesugaring(libs.desugar.jdk.libs)
 
@@ -289,6 +298,7 @@ dependencies {
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.robolectric)
     testImplementation(libs.mockk)
+    testImplementation(libs.secp256k1.jni.jvm)
     androidTestImplementation(libs.espresso.core)
     androidTestImplementation(libs.ui.automator)
 }

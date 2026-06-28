@@ -17,6 +17,15 @@ import com.offnetic.R
 import com.offnetic.data.crypto.SignalProtocolManager
 import com.offnetic.data.local.db.dao.IdentityDao
 import com.offnetic.data.nearby.NcapManager
+import com.offnetic.data.crypto.NostrIdentityManager
+import com.offnetic.data.crypto.nostr.Hex
+import com.offnetic.data.local.db.dao.RelayStateDao
+import com.offnetic.data.relay.RelayFilter
+import com.offnetic.data.relay.RelayPool
+import com.offnetic.data.relay.RelayOutboxProcessor
+import com.offnetic.data.relay.RelayInboxHandler
+import com.offnetic.data.relay.RelayRequestManager
+import com.offnetic.data.crypto.nostr.GiftWrap
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -33,9 +42,16 @@ class NcapForegroundService : Service() {
     @Inject lateinit var ncapManager: NcapManager
     @Inject lateinit var identityDao: IdentityDao
     @Inject lateinit var signalProtocolManager: SignalProtocolManager
+    @Inject lateinit var nostrIdentityManager: NostrIdentityManager
+    @Inject lateinit var relayPool: RelayPool
+    @Inject lateinit var relayOutboxProcessor: RelayOutboxProcessor
+    @Inject lateinit var relayInboxHandler: RelayInboxHandler
+    @Inject lateinit var relayRequestManager: RelayRequestManager
+    @Inject lateinit var relayStateDao: RelayStateDao
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var isNcapActive = false
+    private var isRelayActive = false
     private var bluetoothPaused = false
     private var restartJob: kotlinx.coroutines.Job? = null
     private lateinit var pendingIntent: PendingIntent
@@ -44,6 +60,14 @@ class NcapForegroundService : Service() {
     companion object {
         const val CHANNEL_ID = "offnetic_ncap_channel"
         const val NOTIFICATION_ID = 1001
+
+        fun computeSince(lastSeenSec: Long?): Long {
+            val nowSec = System.currentTimeMillis() / 1000
+            val floor = nowSec - 3L * 24 * 60 * 60
+            val backdateMargin = 2L * 24 * 60 * 60
+            val candidate = (lastSeenSec ?: floor) - backdateMargin
+            return maxOf(candidate, floor)
+        }
     }
 
     private val bluetoothReceiver = object : BroadcastReceiver() {
@@ -110,6 +134,9 @@ class NcapForegroundService : Service() {
         if (!isNcapActive) {
             startNcap()
         }
+        if (!isRelayActive) {
+            startRelay()
+        }
 
         return START_STICKY
     }
@@ -118,12 +145,68 @@ class NcapForegroundService : Service() {
         unregisterReceiver(bluetoothReceiver)
         ncapManager.stopAll()
         isNcapActive = false
-        bluetoothPaused = false
+        isRelayActive = false
         serviceScope.cancel()
+        relayPool.close()
         super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    private fun startRelay() {
+        isRelayActive = true
+        serviceScope.launch(Dispatchers.IO) {
+            try {
+                relayPool.connect()
+                delay(5000)
+
+                val keyPair = nostrIdentityManager.getKeyPair() ?: return@launch
+                val myNpubHex = Hex.encode(keyPair.publicKey)
+                val lastSeen = relayStateDao.getLastSeen()
+                val since = computeSince(lastSeen)
+
+                relayPool.subscribe(
+                    "offnetic-inbox",
+                    RelayFilter(kinds = listOf(GiftWrap.KIND_GIFT_WRAP), pTags = listOf(myNpubHex), since = since)
+                )
+                Timber.d("RelaySvc subscribed since=$since pTag=${myNpubHex.take(8)}")
+
+                launch {
+                    relayPool.events.collect { event ->
+                        try {
+                            relayInboxHandler.handleGiftWrap(event)
+                            relayStateDao.setLastSeen(event.createdAt)
+                        } catch (e: Exception) {
+                            Timber.e(e, "Inbound handler failed")
+                        }
+                    }
+                }
+                launch {
+                    relayPool.acks.collect {
+                        try { relayOutboxProcessor.handleAck(it) } catch (e: Exception) { Timber.e(e, "ACK handler failed") }
+                    }
+                }
+                launch {
+                    while (true) {
+                        delay(60_000L)
+                        try {
+                            val refreshSince = computeSince(relayStateDao.getLastSeen())
+                            relayPool.subscribe("offnetic-inbox", RelayFilter(kinds = listOf(GiftWrap.KIND_GIFT_WRAP), pTags = listOf(myNpubHex), since = refreshSince))
+                            Timber.d("RelaySvc subscription refreshed since=$refreshSince")
+                        } catch (e: Exception) { Timber.e(e, "Subscription refresh failed") }
+                    }
+                }
+                while (true) {
+                    try { relayOutboxProcessor.processPending() } catch (e: Exception) { Timber.e(e, "Outbox drain failed") }
+                    try { relayRequestManager.republishOutbound() } catch (e: Exception) { Timber.e(e, "Outbound request republish failed") }
+                    delay(30_000L)
+                }
+            } catch (e: Exception) {
+                isRelayActive = false
+                Timber.e(e, "Relay start failed")
+            }
+        }
+    }
 
     private fun startNcap() {
         serviceScope.launch(Dispatchers.IO) {

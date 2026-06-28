@@ -28,9 +28,11 @@ import com.offnetic.ui.call.CallActivity
 import com.offnetic.ui.onboarding.SplashViewModel
 import com.offnetic.ui.chat.ChatListScreen
 import com.offnetic.ui.chat.ChatScreen
+import com.offnetic.ui.contacts.AddContactConfirmScreen
 import com.offnetic.ui.contacts.ContactDetailScreen
 import com.offnetic.ui.contacts.MyQrScreen
 import com.offnetic.ui.contacts.QrScannerScreen
+import com.offnetic.ui.contacts.RequestsScreen
 import com.offnetic.ui.onboarding.FullScreenIntentPermissionScreen
 import com.offnetic.ui.onboarding.IdentityGenerationScreen
 import com.offnetic.ui.onboarding.PermissionSlide
@@ -69,7 +71,7 @@ fun OffneticNavHost() {
 
     LaunchedEffect(Unit) {
         ncapManager.incomingCallEvents.collect { senderPublicKey ->
-            if (ncapManager.isCallActive) {
+            if (!ncapManager.isCallActive) {
                 val intent = Intent(context, CallActivity::class.java).apply {
                     putExtra("EXTRA_PEER_PUBLIC_KEY", URLEncoder.encode(senderPublicKey, "UTF-8"))
                     putExtra("EXTRA_IS_INCOMING", true)
@@ -123,6 +125,16 @@ fun OffneticNavHost() {
     val splashViewModel: SplashViewModel = hiltViewModel()
     val hasIdentity by splashViewModel.hasIdentity.collectAsState()
     val hasProfile by splashViewModel.hasProfile.collectAsState()
+
+    val pendingPairingPayload by messageNotificationManager.pendingPairingPayload.collectAsState()
+
+    LaunchedEffect(pendingPairingPayload, hasIdentity, hasProfile) {
+        val payload = pendingPairingPayload ?: return@LaunchedEffect
+        if (hasIdentity && hasProfile) {
+            messageNotificationManager.pendingPairingPayload.value = null
+            navController.navigate(Routes.addContactConfirmRoute(payload))
+        }
+    }
 
     NavHost(
         navController = navController,
@@ -209,9 +221,9 @@ fun OffneticNavHost() {
         composable(Routes.QR_SCANNER) {
             QrScannerScreen(
                 onBack = { navController.popBackStack() },
-                onScanComplete = { data ->
-                    navController.navigate(Routes.chatRoute(data.publicKey)) {
-                        popUpTo(Routes.MAIN)
+                onScanComplete = { payload ->
+                    navController.navigate(Routes.addContactConfirmRoute(payload)) {
+                        launchSingleTop = true
                     }
                 },
                 onShowMyQr = { navController.navigate(Routes.MY_QR) }
@@ -224,6 +236,26 @@ fun OffneticNavHost() {
             )
         }
 
+        composable(Routes.REQUESTS) {
+            RequestsScreen(
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(
+            route = Routes.ADD_CONTACT_CONFIRM,
+            arguments = listOf(navArgument("payload") { type = NavType.StringType })
+        ) {
+            AddContactConfirmScreen(
+                onBack = { navController.popBackStack() },
+                onConfirmed = { publicKey ->
+                    navController.navigate(Routes.chatRoute(publicKey)) {
+                        popUpTo(Routes.MAIN)
+                    }
+                }
+            )
+        }
+
         composable(Routes.CHAT_LIST) {
             val context = LocalContext.current
             val activity = context as? android.app.Activity
@@ -232,6 +264,7 @@ fun OffneticNavHost() {
                     navController.navigate(Routes.chatRoute(contactPublicKey))
                 },
                 onScanQr = { navController.navigate(Routes.QR_SCANNER) },
+                onRequests = { navController.navigate(Routes.REQUESTS) },
                 onNearbyClick = { navController.popBackStack() },
                 onShutdown = {
                     context.stopService(Intent(context, NcapForegroundService::class.java))

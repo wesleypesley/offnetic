@@ -3,6 +3,7 @@ package com.offnetic.data.local.db.entity
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import androidx.room.Index
+import com.offnetic.domain.model.MessageDeliveryState
 
 @Entity(
     tableName = "messages",
@@ -14,13 +15,14 @@ import androidx.room.Index
 data class Message(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
+    val messageUuid: String = java.util.UUID.randomUUID().toString(),
     val sessionId: String,
     val chatId: String,
     val senderPublicKey: String,
     val content: String,
     val type: Int,
     val timestamp: Long,
-    val isSent: Boolean,
+    val deliveryState: MessageDeliveryState = MessageDeliveryState.SAVED,
     val isRead: Boolean = false,
     val attachmentPath: String? = null,
     val attachmentType: Int = 0,

@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.TypeConverters
 import com.offnetic.data.local.db.dao.CallHistoryDao
 import com.offnetic.data.local.db.dao.ContactDao
 import com.offnetic.data.local.db.dao.IdentityDao
@@ -16,6 +17,10 @@ import com.offnetic.data.local.db.dao.SignalPreKeyDao
 import com.offnetic.data.local.db.dao.SignalSenderKeyDao
 import com.offnetic.data.local.db.dao.SignalSessionDao
 import com.offnetic.data.local.db.dao.SignalSignedPreKeyDao
+import com.offnetic.data.local.db.dao.PendingRequestDao
+import com.offnetic.data.local.db.dao.RelayOutboxDao
+import com.offnetic.data.local.db.dao.RelayStateDao
+import com.offnetic.data.local.db.dao.NostrIdentityDao
 import com.offnetic.data.local.db.entity.CallHistoryEntity
 import com.offnetic.data.local.db.entity.Contact
 import com.offnetic.data.local.db.entity.Identity
@@ -28,6 +33,10 @@ import com.offnetic.data.local.db.entity.SignalPreKeyEntity
 import com.offnetic.data.local.db.entity.SignalSenderKeyEntity
 import com.offnetic.data.local.db.entity.SignalSessionEntity
 import com.offnetic.data.local.db.entity.SignalSignedPreKeyEntity
+import com.offnetic.data.local.db.entity.PendingRequestEntity
+import com.offnetic.data.local.db.entity.RelayOutboxEntity
+import com.offnetic.data.local.db.entity.RelayStateEntity
+import com.offnetic.data.local.db.entity.NostrIdentityEntity
 
 @Database(
     entities = [
@@ -42,11 +51,16 @@ import com.offnetic.data.local.db.entity.SignalSignedPreKeyEntity
         SignalSignedPreKeyEntity::class,
         SignalSessionEntity::class,
         SignalSenderKeyEntity::class,
-        SignalIdentityEntity::class
+        SignalIdentityEntity::class,
+        RelayOutboxEntity::class,
+        PendingRequestEntity::class,
+        RelayStateEntity::class,
+        NostrIdentityEntity::class
     ],
-    version = 3,
+    version = 8,
     exportSchema = false
 )
+@TypeConverters(Converters::class)
 abstract class OffneticDatabase : RoomDatabase() {
 
     abstract fun contactDao(): ContactDao
@@ -61,6 +75,10 @@ abstract class OffneticDatabase : RoomDatabase() {
     abstract fun signalSenderKeyDao(): SignalSenderKeyDao
     abstract fun signalIdentityDao(): SignalIdentityDao
     abstract fun callHistoryDao(): CallHistoryDao
+    abstract fun relayOutboxDao(): RelayOutboxDao
+    abstract fun pendingRequestDao(): PendingRequestDao
+    abstract fun relayStateDao(): RelayStateDao
+    abstract fun nostrIdentityDao(): NostrIdentityDao
 
     companion object {
         @Volatile

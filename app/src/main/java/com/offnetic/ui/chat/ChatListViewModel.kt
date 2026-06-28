@@ -6,8 +6,10 @@ import com.offnetic.data.local.db.dao.ContactDao
 import com.offnetic.data.local.db.dao.IdentityDao
 import com.offnetic.data.local.db.dao.MessageDao
 import com.offnetic.data.local.db.dao.ProfileDao
+import com.offnetic.data.relay.RelayRequestManager
 import com.offnetic.data.nearby.NcapManager
-import com.offnetic.domain.model.ConnectionState
+import com.offnetic.data.network.NetworkMonitor
+import com.offnetic.domain.model.ChatReachability
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -25,7 +27,7 @@ data class ChatSummary(
     val lastMessage: String,
     val lastTimestamp: Long,
     val unreadCount: Int,
-    val isOnline: Boolean = false
+    val reachability: ChatReachability = ChatReachability.OFFLINE
 )
 
 @HiltViewModel
@@ -34,24 +36,27 @@ class ChatListViewModel @Inject constructor(
     private val identityDao: IdentityDao,
     private val contactDao: ContactDao,
     private val profileDao: ProfileDao,
-    private val ncapManager: NcapManager
+    private val relayRequestManager: RelayRequestManager,
+    private val ncapManager: NcapManager,
+    private val networkMonitor: NetworkMonitor
 ) : ViewModel() {
 
     private val _myPublicKey = MutableStateFlow("")
     private val _profileDisplayName = MutableStateFlow("")
     val profileDisplayName: StateFlow<String> = _profileDisplayName.asStateFlow()
+    val pendingRequestCount: StateFlow<Int> = relayRequestManager.inboundCount
 
     val chatSummaries: StateFlow<List<ChatSummary>> = _myPublicKey.flatMapLatest { myPk ->
         combine(
             messageDao.getChatSummaries(),
             messageDao.getUnreadCountsPerChat(myPk),
             contactDao.getAll(),
-            ncapManager.peers
-        ) { messages, unreadCounts, contacts, peers ->
+            ncapManager.peers,
+            networkMonitor.isOnline
+        ) { messages, unreadCounts, contacts, peers, online ->
             val nameMap = contacts.associate { it.publicKey to it.displayName }
+            val nostrMap = contacts.associate { it.publicKey to it.nostrPublicKey }
             val unreadMap = unreadCounts.associate { it.chatId to it.count }
-            val onlineSet = peers.filter { it.connectionState == ConnectionState.CONNECTED }
-                .map { it.publicKey }.toSet()
             messages.map { msg ->
                 ChatSummary(
                     contactPublicKey = msg.chatId,
@@ -59,7 +64,12 @@ class ChatListViewModel @Inject constructor(
                     lastMessage = msg.content.take(80),
                     lastTimestamp = msg.timestamp,
                     unreadCount = unreadMap[msg.chatId] ?: 0,
-                    isOnline = msg.chatId in onlineSet
+                    reachability = ChatReachability.forPeer(
+                        contactPublicKey = msg.chatId,
+                        peers = peers,
+                        online = online,
+                        relayEligible = nostrMap[msg.chatId] != null
+                    )
                 )
             }
         }
@@ -67,6 +77,7 @@ class ChatListViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
+            relayRequestManager.refreshCount()
             identityDao.getIdentity()?.let { id ->
                 _myPublicKey.value = id.publicKey
                 profileDao.getByPublicKey(id.publicKey)?.let { profile ->
