@@ -1,5 +1,6 @@
 package com.offnetic.data.relay
 
+import com.offnetic.data.blossom.BlossomFileService
 import com.offnetic.data.crypto.Bech32
 import com.offnetic.data.crypto.NostrIdentityManager
 import com.offnetic.data.crypto.SignalProtocolManager
@@ -7,16 +8,23 @@ import com.offnetic.data.crypto.nostr.GiftWrap
 import com.offnetic.data.crypto.nostr.Hex
 import com.offnetic.data.crypto.nostr.NostrEvent
 import com.offnetic.data.crypto.nostr.Rumor
+import com.offnetic.data.local.db.dao.CallHistoryDao
 import com.offnetic.data.local.db.dao.ContactDao
 import com.offnetic.data.local.db.dao.IdentityDao
 import com.offnetic.data.local.db.dao.MessageDao
 import com.offnetic.data.local.db.dao.PendingRequestDao
+import com.offnetic.data.local.db.entity.CallHistoryEntity
 import com.offnetic.data.local.db.entity.Message
 import com.offnetic.data.local.db.entity.PendingRequestEntity
 import com.offnetic.data.local.db.entity.RequestDirection
+import com.offnetic.data.nearby.WebRtcManager
 import com.offnetic.domain.model.MessageDeliveryState
 import com.offnetic.util.ActiveChatTracker
 import com.offnetic.util.MessageNotificationManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
@@ -36,9 +44,14 @@ class RelayInboxHandler @Inject constructor(
     private val relayRequestManager: RelayRequestManager,
     private val relayControlSender: RelayControlSender,
     private val activeChatTracker: ActiveChatTracker,
-    private val identityDao: IdentityDao
+    private val identityDao: IdentityDao,
+    private val webRtcManager: WebRtcManager,
+    private val callHistoryDao: CallHistoryDao,
+    private val blossomFileService: BlossomFileService
 ) {
     private val rateLimit = ConcurrentHashMap<String, Long>()
+    private val inFlightFiles = ConcurrentHashMap.newKeySet<String>()
+    private val fileScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     suspend fun handleGiftWrap(event: NostrEvent) {
         val myPriv = nostrIdentityManager.getKeyPair()?.privateKey ?: return
@@ -53,6 +66,15 @@ class RelayInboxHandler @Inject constructor(
             RelayControl.TYPE_BUNDLE -> { Timber.d("Inbox uuid=${uuid.take(8)} type=bundle sender=${senderNpub.take(8)}"); handleBundle(senderNpub, rumor) }
             RelayControl.TYPE_ACK -> { if (uuid.isNotEmpty()) messageDao.markDelivered(uuid); Timber.d("Inbox ack uuid=${uuid.take(8)} -> DELIVERED") }
             RelayControl.TYPE_READ -> { if (uuid.isNotEmpty()) messageDao.markRead(uuid); Timber.d("Inbox read uuid=${uuid.take(8)} -> READ") }
+            RelayControl.TYPE_CALL_OFFER -> handleCallOffer(senderNpub, rumor)
+            RelayControl.TYPE_CALL_ANSWER,
+            RelayControl.TYPE_ICE_CANDIDATE,
+            RelayControl.TYPE_CALL_HANGUP -> {
+                contactDao.getByNostrPublicKey(senderNpub)?.let { c ->
+                    webRtcManager.onRelayCallSignal(c.publicKey, type, rumor.content)
+                }
+            }
+            RelayControl.TYPE_FILE_BLOSSOM -> handleFileBlossom(senderNpub, uuid, rumor)
             else -> handleMessage(senderNpub, rumor)
         }
     }
@@ -138,6 +160,68 @@ class RelayInboxHandler @Inject constructor(
         if (ok) {
             Timber.d("Inbox bundle pk=${contact.publicKey.take(8)} session established")
             relaySessionService.onSessionReady(contact.publicKey)
+        }
+    }
+
+    private suspend fun handleCallOffer(senderNpub: String, rumor: Rumor) {
+        val contact = contactDao.getByNostrPublicKey(senderNpub) ?: return
+        val age = System.currentTimeMillis() - rumor.createdAt * 1000L
+        if (age > 45_000L) {
+            callHistoryDao.insert(
+                CallHistoryEntity(
+                    peerPublicKey = contact.publicKey,
+                    type = CallHistoryEntity.TYPE_VOICE,
+                    direction = CallHistoryEntity.DIRECTION_MISSED,
+                    timestamp = System.currentTimeMillis()
+                )
+            )
+            Timber.d("Inbox: dropped stale call offer from ${contact.publicKey.take(8)} age=${age}ms")
+            return
+        }
+        webRtcManager.cacheRelayCallOffer(contact.publicKey, rumor.content)
+    }
+
+    private fun handleFileBlossom(senderNpub: String, uuid: String, rumor: Rumor) {
+        if (uuid.isNotEmpty() && !inFlightFiles.add(uuid)) return // dedup
+        fileScope.launch {
+            try {
+                val contact = contactDao.getByNostrPublicKey(senderNpub) ?: return@launch
+                val json = runCatching { JSONObject(rumor.content) }.getOrNull() ?: return@launch
+                val servers = json.optJSONArray("servers")?.let { arr -> (0 until arr.length()).map { arr.getString(it) } } ?: return@launch
+                val sha256 = json.optString("sha256").takeIf { it.isNotEmpty() } ?: return@launch
+                val keyB64 = json.optString("key").takeIf { it.isNotEmpty() } ?: return@launch
+                val name = json.optString("name", "file")
+                val expectedSize = json.optLong("size", 0L)
+                val mime = json.optString("mime", "application/octet-stream")
+
+                val file = blossomFileService.receiveFile(servers, sha256, keyB64, name, expectedSize) ?: run {
+                    Timber.w("handleFileBlossom: download failed for sha256=${sha256.take(8)}")
+                    return@launch
+                }
+                val msgType = when {
+                    mime.startsWith("image/") -> Message.TYPE_IMAGE
+                    mime.startsWith("video/") -> Message.TYPE_VIDEO
+                    else -> Message.TYPE_FILE
+                }
+                val msgUuid = if (uuid.isNotEmpty()) uuid else java.util.UUID.randomUUID().toString()
+                messageDao.insert(
+                    Message(
+                        messageUuid = msgUuid,
+                        sessionId = contact.publicKey,
+                        chatId = contact.publicKey,
+                        senderPublicKey = contact.publicKey,
+                        content = name,
+                        type = msgType,
+                        timestamp = System.currentTimeMillis(),
+                        deliveryState = MessageDeliveryState.SAVED,
+                        isRead = false,
+                        attachmentPath = file.absolutePath
+                    )
+                )
+                messageNotificationManager.notifyIfNeeded(contact.publicKey)
+            } finally {
+                if (uuid.isNotEmpty()) inFlightFiles.remove(uuid)
+            }
         }
     }
 

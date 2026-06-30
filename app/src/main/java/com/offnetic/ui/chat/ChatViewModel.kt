@@ -6,6 +6,7 @@ import android.provider.OpenableColumns
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.offnetic.data.blossom.BlossomFileService
 import com.offnetic.data.crypto.NcapEnvelope
 import com.offnetic.data.crypto.SignalProtocolManager
 import com.offnetic.data.local.db.dao.ContactDao
@@ -74,6 +75,7 @@ class ChatViewModel @Inject constructor(
     private val voiceNoteRecorder: VoiceNoteRecorder,
     private val activeChatTracker: ActiveChatTracker,
     private val messageNotificationManager: MessageNotificationManager,
+    private val blossomFileService: BlossomFileService,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -224,8 +226,20 @@ class ChatViewModel @Inject constructor(
                     }
                     Timber.d("File sent via NCAPI to ${contactPublicKey.take(8)}")
                     withContext(Dispatchers.IO) { file.delete() }
+                } else if (reachability.value == ChatReachability.INTERNET_RELAY) {
+                    if (file.length() == 0L) { _toastMessage.emit("Empty file"); return@launch }
+                    val npub = contactDao.getByPublicKey(contactPublicKey)?.nostrPublicKey
+                        ?: run { _toastMessage.emit("${_contactName.value} not reachable — file saved"); return@launch }
+                    val sent = withContext(Dispatchers.IO) { blossomFileService.sendFile(npub, file, mimeType) }
+                    if (sent) {
+                        val cur = messageDao.getById(messageId)
+                        if (cur?.type != com.offnetic.data.local.db.entity.Message.TYPE_CANCELLED) {
+                            messageDao.update(entity.copy(id = messageId, deliveryState = MessageDeliveryState.SENT_RELAY))
+                        }
+                    } else {
+                        _toastMessage.emit("Upload failed (no server reachable) — saved")
+                    }
                 } else {
-                    Timber.w("No connected peer for file send to ${contactPublicKey.take(8)}")
                     _toastMessage.emit("${_contactName.value} not connected — file saved")
                 }
             } catch (e: Exception) {

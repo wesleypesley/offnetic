@@ -67,6 +67,36 @@ class RelayControlSender @Inject constructor(
         receiptScope.launch { throttledReceipt(recipientNpub, messageUuid, RelayControl.TYPE_READ) }
     }
 
+    suspend fun sendCallSignal(recipientNpub: String, type: String, payload: String): Boolean {
+        val recipientPub = decode(recipientNpub) ?: return false
+        val myPriv = nostrIdentityManager.getKeyPair()?.privateKey ?: return false
+        val giftWrap = GiftWrap.wrap(
+            senderPriv = myPriv,
+            recipientPub = recipientPub,
+            content = payload,
+            kind = GiftWrap.KIND_DM,
+            tags = listOf(listOf(RelayControl.TAG_TYPE, type))
+        )
+        return relayPool.publish(giftWrap) > 0
+    }
+
+    suspend fun sendFileBlossom(recipientNpub: String, payloadJson: String): Boolean {
+        val recipientPub = decode(recipientNpub) ?: return false
+        val myPriv = nostrIdentityManager.getKeyPair()?.privateKey ?: return false
+        val uuid = java.util.UUID.randomUUID().toString()
+        val giftWrap = GiftWrap.wrap(
+            senderPriv = myPriv,
+            recipientPub = recipientPub,
+            content = payloadJson,
+            kind = GiftWrap.KIND_DM,
+            tags = listOf(
+                listOf(RelayControl.TAG_TYPE, RelayControl.TYPE_FILE_BLOSSOM),
+                listOf("u", uuid)
+            )
+        )
+        return relayPool.publish(giftWrap) > 0
+    }
+
     private suspend fun throttledReceipt(recipientNpub: String, messageUuid: String, type: String) = receiptMutex.withLock {
         val wait = RECEIPT_INTERVAL_MS - (System.currentTimeMillis() - lastReceiptAt)
         if (wait > 0) delay(wait)

@@ -1,6 +1,5 @@
 package com.offnetic.ui.call
 
-import android.net.wifi.WifiManager
 import com.offnetic.data.crypto.NcapEnvelope
 import com.offnetic.data.local.db.dao.CallHistoryDao
 import com.offnetic.data.local.db.dao.ContactDao
@@ -33,7 +32,6 @@ class CallViewModel @AssistedInject constructor(
     @Assisted private val webRtcManager: WebRtcManager,
     private val ncapManager: NcapManager,
     private val contactDao: ContactDao,
-    private val wifiManager: WifiManager,
     private val callHistoryDao: CallHistoryDao
 ) {
 
@@ -71,13 +69,6 @@ class CallViewModel @AssistedInject constructor(
         callStartTime = System.currentTimeMillis()
         callStateFlow.update { it.copy(peerDisplayName = displayName, peerPublicKey = peerPublicKey, error = "") }
         internalScope.launch {
-            if (!wifiManager.isWifiEnabled) {
-                android.util.Log.e("offCall", "startOutgoingCall WIFI OFF")
-                _toastMessage.emit("Wi-Fi required for calls")
-                callStateFlow.update { it.copy(phase = CallPhase.ENDED, error = "Wi-Fi required") }
-                _finishEvent.emit(Unit)
-                return@launch
-            }
             webRtcManager.initialize()
             observeCallSignals()
             webRtcManager.startCall(peerPublicKey, isVideo = true, displayName)
@@ -90,13 +81,6 @@ class CallViewModel @AssistedInject constructor(
         callStartTime = System.currentTimeMillis()
         callStateFlow.update { it.copy(peerDisplayName = displayName, peerPublicKey = peerPublicKey, error = "") }
         internalScope.launch {
-            if (!wifiManager.isWifiEnabled) {
-                android.util.Log.e("offCall", "acceptIncomingCall WIFI OFF")
-                _toastMessage.emit("Wi-Fi required for calls")
-                callStateFlow.update { it.copy(phase = CallPhase.ENDED, error = "Wi-Fi required") }
-                _finishEvent.emit(Unit)
-                return@launch
-            }
             webRtcManager.initialize()
             observeCallSignals()
             webRtcManager.enterP2pDiscoveryMode(peerPublicKey)

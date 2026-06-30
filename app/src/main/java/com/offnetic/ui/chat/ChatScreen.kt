@@ -186,7 +186,7 @@ fun ChatScreen(
             InputBar(
                 textInput = textInput,
                 isRecording = isRecording,
-                richEnabled = reachability == ChatReachability.LOCAL,
+                richEnabled = reachability != ChatReachability.OFFLINE,
                 onTextChange = { if (it.length <= 5000) textInput = it },
                 onSend = {
                     if (textInput.isNotBlank()) {
@@ -260,11 +260,11 @@ private fun ChatHeader(
                 }
             }
 
-            IconButton(onClick = onCall, enabled = reachability == ChatReachability.LOCAL) {
+            IconButton(onClick = onCall, enabled = reachability != ChatReachability.OFFLINE) {
                 Icon(
                     painter = painterResource(R.drawable.ic_phone_outlined),
                     contentDescription = "Call",
-                    tint = if (reachability == ChatReachability.LOCAL) Color(0xB3FFFFFF) else Color(0x40FFFFFF),
+                    tint = if (reachability != ChatReachability.OFFLINE) Color(0xB3FFFFFF) else Color(0x40FFFFFF),
                     modifier = Modifier.size(20.dp)
                 )
             }
