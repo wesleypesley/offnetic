@@ -72,6 +72,12 @@ interface MessageDao {
 
     @Query("SELECT chatId, COUNT(*) AS count FROM messages WHERE isRead = 0 AND senderPublicKey != :myPublicKey GROUP BY chatId")
     fun getUnreadCountsPerChat(myPublicKey: String): Flow<List<UnreadCountRow>>
+
+    @Query("SELECT * FROM messages WHERE deliveryState = 'SAVED' AND senderPublicKey = :myPublicKey AND type IN (1, 2, 3, 4) ORDER BY timestamp ASC")
+    suspend fun getUnsentAttachments(myPublicKey: String): List<Message>
+
+    @Query("UPDATE messages SET deliveryState = 'SENT_RELAY' WHERE messageUuid = :messageUuid AND deliveryState = 'SAVED'")
+    suspend fun markSentRelay(messageUuid: String)
 }
 
 data class UnreadCountRow(

@@ -22,6 +22,7 @@ import com.offnetic.data.crypto.nostr.Hex
 import com.offnetic.data.local.db.dao.RelayStateDao
 import com.offnetic.data.relay.RelayFilter
 import com.offnetic.data.relay.RelayPool
+import com.offnetic.data.relay.AttachmentRelayResender
 import com.offnetic.data.relay.RelayOutboxProcessor
 import com.offnetic.data.relay.RelayInboxHandler
 import com.offnetic.data.relay.RelayRequestManager
@@ -45,6 +46,7 @@ class NcapForegroundService : Service() {
     @Inject lateinit var nostrIdentityManager: NostrIdentityManager
     @Inject lateinit var relayPool: RelayPool
     @Inject lateinit var relayOutboxProcessor: RelayOutboxProcessor
+    @Inject lateinit var attachmentRelayResender: AttachmentRelayResender
     @Inject lateinit var relayInboxHandler: RelayInboxHandler
     @Inject lateinit var relayRequestManager: RelayRequestManager
     @Inject lateinit var relayStateDao: RelayStateDao
@@ -194,6 +196,12 @@ class NcapForegroundService : Service() {
                             relayPool.subscribe("offnetic-inbox", RelayFilter(kinds = listOf(GiftWrap.KIND_GIFT_WRAP), pTags = listOf(myNpubHex), since = refreshSince))
                             Timber.d("RelaySvc subscription refreshed since=$refreshSince")
                         } catch (e: Exception) { Timber.e(e, "Subscription refresh failed") }
+                    }
+                }
+                launch {
+                    while (true) {
+                        try { attachmentRelayResender.processPending() } catch (e: Exception) { Timber.e(e, "Attachment resend drain failed") }
+                        delay(30_000L)
                     }
                 }
                 while (true) {

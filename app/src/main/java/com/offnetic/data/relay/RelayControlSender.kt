@@ -80,10 +80,9 @@ class RelayControlSender @Inject constructor(
         return relayPool.publish(giftWrap) > 0
     }
 
-    suspend fun sendFileBlossom(recipientNpub: String, payloadJson: String): Boolean {
+    suspend fun sendFileBlossom(recipientNpub: String, payloadJson: String, messageUuid: String): Boolean {
         val recipientPub = decode(recipientNpub) ?: return false
         val myPriv = nostrIdentityManager.getKeyPair()?.privateKey ?: return false
-        val uuid = java.util.UUID.randomUUID().toString()
         val giftWrap = GiftWrap.wrap(
             senderPriv = myPriv,
             recipientPub = recipientPub,
@@ -91,7 +90,7 @@ class RelayControlSender @Inject constructor(
             kind = GiftWrap.KIND_DM,
             tags = listOf(
                 listOf(RelayControl.TAG_TYPE, RelayControl.TYPE_FILE_BLOSSOM),
-                listOf("u", uuid)
+                listOf("u", messageUuid)
             )
         )
         return relayPool.publish(giftWrap) > 0

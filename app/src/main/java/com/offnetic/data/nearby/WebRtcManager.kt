@@ -285,6 +285,7 @@ class WebRtcManager(
                                         val offerJson = JSONObject().apply {
                                             put("type", finalDesc?.type?.canonicalForm() ?: sdp.type.canonicalForm())
                                             put("sdp", finalDesc?.description ?: sdp.description)
+                                            put("video", isVideo)
                                         }
                                         val sent = relayControlSender.sendCallSignal(
                                             contact!!.nostrPublicKey!!,
@@ -395,7 +396,8 @@ class WebRtcManager(
             return@launch
         }
         callTransports[peer] = CallTransport.RELAY
-        getCallState(peer).update { it.copy(isVideo = true) }
+        val isVideo = runCatching { JSONObject(sdpJson).optBoolean("video", false) }.getOrDefault(false)
+        getCallState(peer).update { it.copy(isVideo = isVideo) }
         onSdpReceived(peer, sdpJson, "") // stores in pendingSdpOffers + sets INCOMING phase
         if (!ncapManager.isCallActive) {
             context.startForegroundService(
@@ -515,9 +517,14 @@ class WebRtcManager(
     }
 
     fun onSdpReceived(peerPublicKey: String, sdpJson: String, endpointId: String = "") {
-        val json = JSONObject(sdpJson)
-        val type = json.getString("type")
-        val sdpString = json.getString("sdp")
+        val json = try { JSONObject(sdpJson) } catch (e: Exception) {
+            Timber.w(e, "onSdpReceived: bad JSON for ${peerPublicKey.take(8)}"); return
+        }
+        val type = json.optString("type")
+        val sdpString = json.optString("sdp")
+        if (sdpString.isEmpty()) {
+            Timber.w("onSdpReceived: empty sdp for ${peerPublicKey.take(8)}"); return
+        }
 
         val sdpType = when (type) {
             "offer" -> SessionDescription.Type.OFFER
@@ -580,7 +587,9 @@ class WebRtcManager(
     }
 
     fun onIceCandidateReceived(peerPublicKey: String, candidateJson: String) {
-        val json = JSONObject(candidateJson)
+        val json = try { JSONObject(candidateJson) } catch (e: Exception) {
+            Timber.w(e, "onIceCandidateReceived: bad JSON for ${peerPublicKey.take(8)}"); return
+        }
         val sdp = json.optString("sdp", "")
         if (sdp.isEmpty()) return
         val candidate = IceCandidate(json.optString("sdpMid", ""), json.optInt("sdpMLineIndex", 0), sdp)
@@ -603,11 +612,15 @@ class WebRtcManager(
     fun hangup(peerPublicKey: String) {
         Timber.d("hangup: local hangup for ${peerPublicKey.take(8)}")
         sendOnDataChannel(peerPublicKey, JSONObject().apply { put("hangup", true) }.toString())
+        val transport = callTransports[peerPublicKey]
         scope.launch {
-            when (callTransports[peerPublicKey]) {
+            when (transport) {
                 CallTransport.RELAY -> {
                     val npub = contactDao.getByPublicKey(peerPublicKey)?.nostrPublicKey
-                    if (npub != null) relayControlSender.sendCallSignal(npub, RelayControl.TYPE_CALL_HANGUP, "")
+                    if (npub != null) {
+                        relayControlSender.sendCallSignal(npub, RelayControl.TYPE_CALL_HANGUP, "")
+                        android.util.Log.e("offCall", "CALL_HANGUP sent via relay to ${npub.take(8)}")
+                    }
                 }
                 else -> {
                     val endpointId = ncapManager.getConnectedEndpointIds(peerPublicKey).firstOrNull()
@@ -1030,6 +1043,7 @@ class WebRtcManager(
         remoteVideoTracks.remove(peerPublicKey)
         pendingRemoteRenderers.remove(peerPublicKey)
         pendingOfferEndpoints.remove(peerPublicKey)
+        pendingSdpOffers.remove(peerPublicKey)
         pendingSdpAnswers.remove(peerPublicKey)
         iceCandidateCache.remove(peerPublicKey)
     }

@@ -24,7 +24,7 @@ class BlossomFileService @Inject constructor(
 ) {
     // Returns true only if the gift-wrap published successfully.
     // Caller keeps the plaintext local copy; this method handles ciphertext temp lifecycle.
-    suspend fun sendFile(npub: String, plain: File, mime: String): Boolean {
+    suspend fun sendFile(npub: String, plain: File, mime: String, messageUuid: String, content: String): Boolean {
         val sealed = try {
             FileCrypto.encryptToTemp(plain, context.cacheDir)
         } catch (e: Exception) {
@@ -37,12 +37,13 @@ class BlossomFileService @Inject constructor(
             val payload = JSONObject().apply {
                 put("sha256", sealed.sha256Hex)
                 put("key", sealed.keyB64)
-                put("file_name", plain.name)
-                put("file_size", plain.length())
-                put("mime_type", mime)
+                put("name", plain.name)
+                put("size", plain.length())
+                put("mime", mime)
+                put("content", content)
                 put("servers", JSONArray(servers))
             }
-            return relayControlSender.sendFileBlossom(npub, payload.toString())
+            return relayControlSender.sendFileBlossom(npub, payload.toString(), messageUuid)
         } finally {
             sealed.ciphertext.delete()
         }
@@ -56,14 +57,20 @@ class BlossomFileService @Inject constructor(
         name: String,
         expectedSize: Long
     ): File? {
-        val temp = blossomClient.download(servers, sha256, context.cacheDir) ?: return null
+        val cap = if (expectedSize > 0) minOf(expectedSize + CIPHERTEXT_OVERHEAD, MAX_DOWNLOAD_BYTES) else MAX_DOWNLOAD_BYTES
+        val temp = blossomClient.download(servers, sha256, context.cacheDir, cap) ?: return null
         return try {
-            FileCrypto.decryptToTemp(temp, keyB64, context.filesDir, name)
+            FileCrypto.decryptToTemp(temp, keyB64, context.filesDir, "${sha256.take(16)}_$name")
         } catch (e: Exception) {
             Timber.w(e, "BlossomFileService: decrypt failed ${sha256.take(8)}")
             null
         } finally {
             temp.delete()
         }
+    }
+
+    companion object {
+        private const val CIPHERTEXT_OVERHEAD = 1024L
+        private const val MAX_DOWNLOAD_BYTES = 100L * 1024 * 1024 + CIPHERTEXT_OVERHEAD
     }
 }

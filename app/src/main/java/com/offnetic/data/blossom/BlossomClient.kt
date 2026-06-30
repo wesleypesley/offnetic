@@ -36,19 +36,24 @@ class BlossomClient @Inject constructor(
     // Returns list of server base-URLs that now hold the blob. Empty = all failed.
     suspend fun upload(ciphertext: File, sha256Hex: String): List<String> {
         val priv = nostrIdentityManager.getKeyPair()?.privateKey ?: return emptyList()
-        val primary = DEFAULT_SERVERS[0]
-        val primaryUrl = tryUpload(primary, ciphertext, sha256Hex, priv) ?: return emptyList()
-        val result = mutableListOf(primary)
-        for (server in DEFAULT_SERVERS.drop(1)) {
+        var primary: Pair<String, String>? = null
+        for (server in DEFAULT_SERVERS) {
+            val url = tryUpload(server, ciphertext, sha256Hex, priv)
+            if (url != null) { primary = server to url; break }
+        }
+        val (primaryServer, primaryUrl) = primary ?: return emptyList()
+        val result = mutableListOf(primaryServer)
+        for (server in DEFAULT_SERVERS) {
+            if (server == primaryServer) continue
             if (tryMirror(server, primaryUrl, sha256Hex, priv)) result.add(server)
         }
         return result
     }
 
     // Returns temp file with verified ciphertext bytes, or null if all servers fail / hash mismatch.
-    suspend fun download(servers: List<String>, sha256Hex: String, cacheDir: File): File? {
+    suspend fun download(servers: List<String>, sha256Hex: String, cacheDir: File, maxBytes: Long): File? {
         for (server in servers) {
-            val f = tryDownload(server, sha256Hex, cacheDir)
+            val f = tryDownload(server, sha256Hex, cacheDir, maxBytes)
             if (f != null) return f
         }
         return null
@@ -86,7 +91,7 @@ class BlossomClient @Inject constructor(
         }
     } catch (e: Exception) { Timber.w(e, "Blossom mirror $server threw"); false }
 
-    private fun tryDownload(server: String, sha256Hex: String, cacheDir: File): File? = try {
+    private fun tryDownload(server: String, sha256Hex: String, cacheDir: File, maxBytes: Long): File? = try {
         val req = Request.Builder().url("$server/$sha256Hex").get().build()
         okHttpClient.newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) { Timber.w("Blossom dl $server → ${resp.code}"); return null }
@@ -95,7 +100,19 @@ class BlossomClient @Inject constructor(
             val digest = MessageDigest.getInstance("SHA-256")
             try {
                 DigestInputStream(body.byteStream(), digest).use { dis ->
-                    tmp.outputStream().use { out -> dis.copyTo(out) }
+                    tmp.outputStream().use { out ->
+                        val buf = ByteArray(8192)
+                        var total = 0L
+                        var read: Int
+                        while (dis.read(buf).also { read = it } != -1) {
+                            total += read
+                            if (total > maxBytes) {
+                                Timber.w("Blossom dl $server exceeded cap $maxBytes")
+                                tmp.delete(); return null
+                            }
+                            out.write(buf, 0, read)
+                        }
+                    }
                 }
                 val actual = digest.digest().joinToString("") { "%02x".format(it) }
                 if (actual != sha256Hex) {

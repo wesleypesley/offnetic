@@ -201,7 +201,12 @@ class RelayInboxHandler @Inject constructor(
                 val msgType = when {
                     mime.startsWith("image/") -> Message.TYPE_IMAGE
                     mime.startsWith("video/") -> Message.TYPE_VIDEO
+                    mime.startsWith("audio/") -> Message.TYPE_VOICE_NOTE
                     else -> Message.TYPE_FILE
+                }
+                val displayContent = when {
+                    msgType == Message.TYPE_VOICE_NOTE -> json.optString("content", "").takeIf { it.isNotEmpty() } ?: name
+                    else -> name
                 }
                 val msgUuid = if (uuid.isNotEmpty()) uuid else java.util.UUID.randomUUID().toString()
                 messageDao.insert(
@@ -210,7 +215,7 @@ class RelayInboxHandler @Inject constructor(
                         sessionId = contact.publicKey,
                         chatId = contact.publicKey,
                         senderPublicKey = contact.publicKey,
-                        content = name,
+                        content = displayContent,
                         type = msgType,
                         timestamp = System.currentTimeMillis(),
                         deliveryState = MessageDeliveryState.SAVED,
@@ -219,6 +224,13 @@ class RelayInboxHandler @Inject constructor(
                     )
                 )
                 messageNotificationManager.notifyIfNeeded(contact.publicKey)
+                if (uuid.isNotEmpty()) {
+                    relayControlSender.sendDeliveryAck(senderNpub, uuid)
+                    if (activeChatTracker.activeChatKey == contact.publicKey) {
+                        identityDao.getIdentity()?.publicKey?.let { messageDao.markAsRead(contact.publicKey, it) }
+                        relayControlSender.sendReadReceipt(senderNpub, uuid)
+                    }
+                }
             } finally {
                 if (uuid.isNotEmpty()) inFlightFiles.remove(uuid)
             }

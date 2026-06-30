@@ -16,6 +16,8 @@ import android.os.Vibrator
 import androidx.core.app.NotificationCompat
 import com.offnetic.R
 import com.offnetic.data.local.db.dao.ContactDao
+import com.offnetic.data.nearby.WebRtcManager
+import com.offnetic.domain.model.CallPhase
 import com.offnetic.ui.call.CallActivity
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
@@ -33,6 +35,7 @@ import javax.inject.Inject
 class IncomingCallService : Service() {
 
     @Inject lateinit var contactDao: ContactDao
+    @Inject lateinit var webRtcManager: WebRtcManager
 
     companion object {
         const val CHANNEL_ID = "offnetic_incoming_calls"
@@ -110,6 +113,9 @@ class IncomingCallService : Service() {
         timeoutJob = serviceScope.launch {
             delay(60_000L)
             Timber.d("Incoming call ringing timeout — stopping")
+            if (webRtcManager.getCallState(peerPublicKey).value.phase == CallPhase.INCOMING) {
+                webRtcManager.onCallHangup(peerPublicKey)
+            }
             stopRinging()
         }
     }

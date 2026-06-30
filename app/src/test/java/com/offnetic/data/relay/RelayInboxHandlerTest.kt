@@ -76,7 +76,7 @@ class RelayInboxHandlerTest {
         relayRequestManager = mockk(relaxed = true)
         controlSender = mockk(relaxed = true)
         activeChatTracker = mockk(relaxed = true)
-        handler = RelayInboxHandler(nim, contacts, messages, pendingRequests, signal, notifier, sessionService, relayRequestManager, controlSender, activeChatTracker, db.identityDao())
+        handler = RelayInboxHandler(nim, contacts, messages, pendingRequests, signal, notifier, sessionService, relayRequestManager, controlSender, activeChatTracker, db.identityDao(), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true))
 
         senderNostrPriv = GiftWrap.generateEphemeralKey()
         senderNpub = Bech32.npub(Secp256k1.pubkeyCreate(senderNostrPriv).copyOfRange(1, 33))

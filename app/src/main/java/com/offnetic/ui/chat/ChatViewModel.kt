@@ -230,7 +230,7 @@ class ChatViewModel @Inject constructor(
                     if (file.length() == 0L) { _toastMessage.emit("Empty file"); return@launch }
                     val npub = contactDao.getByPublicKey(contactPublicKey)?.nostrPublicKey
                         ?: run { _toastMessage.emit("${_contactName.value} not reachable — file saved"); return@launch }
-                    val sent = withContext(Dispatchers.IO) { blossomFileService.sendFile(npub, file, mimeType) }
+                    val sent = withContext(Dispatchers.IO) { blossomFileService.sendFile(npub, file, mimeType, entity.messageUuid, entity.content) }
                     if (sent) {
                         val cur = messageDao.getById(messageId)
                         if (cur?.type != com.offnetic.data.local.db.entity.Message.TYPE_CANCELLED) {
@@ -292,6 +292,18 @@ class ChatViewModel @Inject constructor(
                         } catch (e: Exception) {
                             Timber.e(e, "Voice note send failed")
                             _toastMessage.emit("Voice note send failed — saved")
+                        }
+                    } else if (reachability.value == ChatReachability.INTERNET_RELAY) {
+                        val npub = contactDao.getByPublicKey(contactPublicKey)?.nostrPublicKey
+                            ?: run { _toastMessage.emit("${_contactName.value} not reachable — voice note saved"); return@launch }
+                        val sent = withContext(Dispatchers.IO) { blossomFileService.sendFile(npub, file, "audio/mp4", entity.messageUuid, entity.content) }
+                        if (sent) {
+                            val cur = messageDao.getById(messageId)
+                            if (cur?.type != com.offnetic.data.local.db.entity.Message.TYPE_CANCELLED) {
+                                messageDao.update(entity.copy(id = messageId, deliveryState = MessageDeliveryState.SENT_RELAY))
+                            }
+                        } else {
+                            _toastMessage.emit("Upload failed (no server reachable) — voice note saved")
                         }
                     } else {
                         Timber.w("No connected peer for voice note to ${contactPublicKey.take(8)}")
@@ -618,6 +630,18 @@ class ChatViewModel @Inject constructor(
                             else mimeTypeFor(file.name)
                         ncapManager.sendFile(connected.first(), path, file.name, file.length(), mime)
                         messageDao.update(entity.copy(deliveryState = MessageDeliveryState.SENT_LOCAL))
+                    } else if (reachability.value == ChatReachability.INTERNET_RELAY) {
+                        val npub = contactDao.getByPublicKey(contactPublicKey)?.nostrPublicKey
+                            ?: run { _toastMessage.emit("${_contactName.value} not reachable — saved"); return@launch }
+                        val file = java.io.File(path)
+                        val mime = if (msg.type == com.offnetic.data.local.db.entity.Message.TYPE_VOICE_NOTE) "audio/mp4"
+                            else mimeTypeFor(file.name)
+                        val sent = withContext(Dispatchers.IO) { blossomFileService.sendFile(npub, file, mime, msg.messageUuid, msg.content) }
+                        if (sent) {
+                            messageDao.update(entity.copy(deliveryState = MessageDeliveryState.SENT_RELAY))
+                        } else {
+                            _toastMessage.emit("Upload failed (no server reachable) — saved")
+                        }
                     } else {
                         _toastMessage.emit("${_contactName.value} not connected")
                     }
