@@ -178,8 +178,10 @@ class NcapForegroundService : Service() {
                         try {
                             relayInboxHandler.handleGiftWrap(event)
                             relayStateDao.setLastSeen(event.createdAt)
+                        } catch (e: kotlinx.coroutines.CancellationException) {
+                            throw e
                         } catch (e: Exception) {
-                            Timber.e(e, "Inbound handler failed")
+                            Timber.e(e, "Inbound handler failed for event kind=${event.kind}")
                         }
                     }
                 }

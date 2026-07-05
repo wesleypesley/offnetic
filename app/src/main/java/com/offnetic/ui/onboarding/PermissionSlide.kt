@@ -2,6 +2,7 @@ package com.offnetic.ui.onboarding
 
 import android.Manifest
 import android.os.Build
+import timber.log.Timber
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
@@ -117,7 +118,14 @@ fun PermissionSlide(
 
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) { onNext() }
+    ) { results ->
+        val denied = results.filterValues { !it }.keys
+        if (denied.isNotEmpty()) {
+            Timber.w("Permissions denied: %s", denied.joinToString())
+        }
+        // Always proceed — runtime permissions are re-checked at feature use-sites
+        onNext()
+    }
 
     LaunchedEffect(Unit) {
         kotlinx.coroutines.delay(60)

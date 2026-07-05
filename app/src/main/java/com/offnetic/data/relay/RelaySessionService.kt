@@ -7,6 +7,8 @@ import com.offnetic.data.local.db.dao.RelayOutboxDao
 import com.offnetic.data.local.db.entity.Message
 import com.offnetic.data.local.db.entity.RelayOutboxEntity
 import com.offnetic.domain.model.MessageDeliveryState
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -20,7 +22,9 @@ class RelaySessionService @Inject constructor(
     private val relayOutboxDao: RelayOutboxDao,
     private val relayOutboxProcessor: RelayOutboxProcessor
 ) {
-    suspend fun onSessionReady(contactPublicKey: String) {
+    private val sessionMutex = Mutex()
+
+    suspend fun onSessionReady(contactPublicKey: String) = sessionMutex.withLock {
         val myIdentity = identityDao.getIdentity() ?: return
         val myPk = myIdentity.publicKey
         val messages = messageDao.getUnsentMessagesForChat(contactPublicKey, myPk)

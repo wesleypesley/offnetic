@@ -1,3 +1,4 @@
+import java.util.Properties
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
@@ -66,10 +67,13 @@ android {
 
     signingConfigs {
         create("release") {
-            storeFile = file("offnetic-release.jks")
-            storePassword = "offnetic123"
-            keyAlias = "offnetic"
-            keyPassword = "offnetic123"
+            val props = Properties()
+            val localPropsFile = rootProject.file("local.properties")
+            if (localPropsFile.exists()) props.load(localPropsFile.inputStream())
+            storeFile = file(props.getProperty("KEYSTORE_FILE", "offnetic-release.jks"))
+            storePassword = props.getProperty("KEYSTORE_PASSWORD", "")
+            keyAlias = props.getProperty("KEY_ALIAS", "offnetic")
+            keyPassword = props.getProperty("KEY_PASSWORD", "")
         }
     }
 

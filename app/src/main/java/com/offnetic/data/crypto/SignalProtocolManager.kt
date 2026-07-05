@@ -7,10 +7,13 @@ import com.offnetic.data.local.db.entity.PreKeyBundleEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import org.signal.libsignal.protocol.DuplicateMessageException
 import org.signal.libsignal.protocol.IdentityKey
+import org.signal.libsignal.protocol.NoSessionException
 import org.signal.libsignal.protocol.SessionBuilder
 import org.signal.libsignal.protocol.SessionCipher
 import org.signal.libsignal.protocol.SignalProtocolAddress
+import org.signal.libsignal.protocol.UntrustedIdentityException
 import org.signal.libsignal.protocol.ecc.ECKeyPair
 import org.signal.libsignal.protocol.ecc.ECPublicKey
 import org.signal.libsignal.protocol.kem.KEMKeyPair
@@ -169,6 +172,18 @@ class SignalProtocolManager @Inject constructor(
                 else -> throw IllegalArgumentException("Unknown message type")
             }
             plaintext
+        } catch (e: DuplicateMessageException) {
+            // Already delivered — silently drop, do not surface to UI
+            Timber.d("DuplicateMessage from %s — already processed, dropping", peerPublicKey.take(8))
+            null
+        } catch (e: NoSessionException) {
+            // Session was wiped or never established — caller should trigger renegotiation
+            Timber.w("NoSession for %s — ratchet state lost, session needs reset", peerPublicKey.take(8))
+            null
+        } catch (e: UntrustedIdentityException) {
+            // Remote identity key changed since we last verified it — potential MITM
+            Timber.e("UntrustedIdentity from %s — identity key mismatch, possible MITM", peerPublicKey.take(8))
+            null
         } catch (e: Exception) {
             Timber.w(e, "Decryption failed for peer %s", peerPublicKey.take(8))
             null
