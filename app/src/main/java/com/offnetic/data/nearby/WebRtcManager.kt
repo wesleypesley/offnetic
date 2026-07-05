@@ -965,7 +965,7 @@ class WebRtcManager(
                 buffer.data.get(data)
                 try {
                     val json = JSONObject(String(data))
-                    if (json.has("camera")) state.update { it.copy(isCameraOn = json.getBoolean("camera")) }
+                    if (json.has("camera")) state.update { it.copy(isRemoteCameraOn = json.getBoolean("camera")) }
                     if (json.has("mute")) state.update { it.copy(isMuted = json.getBoolean("mute")) }
                     if (json.has("hangup")) { state.update { it.copy(phase = CallPhase.ENDED) }; cleanupPeerConnection(peerPublicKey) }
                 } catch (e: Exception) {

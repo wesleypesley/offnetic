@@ -1,73 +1,44 @@
 <?xml version="1.0" encoding="utf-8"?>
-<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="#000000"
     android:keepScreenOn="true">
 
+    <!-- Layer 1: full-screen remote video -->
     <org.webrtc.SurfaceViewRenderer
         android:id="@+id/fullscreen_video_view"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_centerInParent="true" />
+        android:visibility="invisible" />
 
-    <org.webrtc.SurfaceViewRenderer
-        android:id="@+id/pip_video_view"
-        android:layout_width="150dp"
-        android:layout_height="150dp"
-        android:layout_alignParentEnd="true"
-        android:layout_alignParentBottom="true"
-        android:layout_marginEnd="12dp"
-        android:layout_marginBottom="100dp"
-        android:visibility="gone" />
-
-    <TextView
-        android:id="@+id/call_peer_name"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_centerHorizontal="true"
-        android:layout_marginTop="56dp"
-        android:paddingHorizontal="16dp"
-        android:paddingVertical="4dp"
-        android:textColor="#FFFFFF"
-        android:textSize="24sp"
-        android:textStyle="bold" />
-
-    <TextView
-        android:id="@+id/call_duration"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_below="@+id/call_peer_name"
-        android:layout_centerHorizontal="true"
-        android:layout_marginTop="6dp"
-        android:paddingHorizontal="12dp"
-        android:paddingVertical="2dp"
-        android:background="#80000000"
-        android:textColor="#FFFFFFFF"
-        android:textSize="16sp" />
-
-    <TextView
-        android:id="@+id/call_status"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_centerInParent="true"
-        android:textColor="#80FFFFFF"
-        android:textSize="13sp" />
-
+    <!-- Layer 2: camera-off overlay (shows peer initials when remote camera is off) -->
     <LinearLayout
         android:id="@+id/camera_off_overlay"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_centerInParent="true"
+        android:layout_gravity="center"
         android:gravity="center"
         android:orientation="vertical"
         android:visibility="gone">
 
         <TextView
             android:id="@+id/camera_off_name"
+            android:layout_width="72dp"
+            android:layout_height="72dp"
+            android:background="@drawable/call_bg_circle_dark"
+            android:gravity="center"
+            android:textColor="#FFFFFF"
+            android:textSize="30sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/camera_off_name_label"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:textColor="#99FFFFFF"
-            android:textSize="20sp"
+            android:layout_marginTop="12dp"
+            android:textColor="#B3FFFFFF"
+            android:textSize="17sp"
             android:textStyle="bold" />
 
         <TextView
@@ -75,126 +46,236 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
             android:text="Camera off"
-            android:textColor="#4DFFFFFF"
+            android:textColor="#66FFFFFF"
             android:textSize="13sp" />
+
     </LinearLayout>
 
+    <!-- Layer 3: top scrim + header (name, duration, status) -->
     <LinearLayout
-        android:id="@+id/incoming_buttons"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_alignParentBottom="true"
-        android:layout_centerHorizontal="true"
-        android:layout_marginBottom="140dp"
-        android:orientation="horizontal"
-        android:visibility="gone">
-
-        <ImageButton
-            android:id="@+id/accept_button"
-            android:layout_width="68dp"
-            android:layout_height="68dp"
-            android:layout_marginEnd="32dp"
-            android:background="@drawable/call_bg_circle_green"
-            android:contentDescription="Accept"
-            android:src="@drawable/ic_call_phone"
-            android:tint="#FFFFFF" />
-
-        <ImageButton
-            android:id="@+id/decline_button"
-            android:layout_width="68dp"
-            android:layout_height="68dp"
-            android:background="@drawable/call_bg_circle_red"
-            android:contentDescription="Decline"
-            android:src="@drawable/ic_call_phone"
-            android:tint="#FFFFFF"
-            android:rotation="135" />
-    </LinearLayout>
-
-    <LinearLayout
-        android:id="@+id/control_panel"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_alignParentBottom="true"
-        android:layout_marginBottom="32dp"
-        android:gravity="center"
-        android:orientation="horizontal">
+        android:layout_gravity="top"
+        android:background="@drawable/call_scrim_top"
+        android:orientation="vertical"
+        android:paddingStart="20dp"
+        android:paddingTop="56dp"
+        android:paddingEnd="20dp"
+        android:paddingBottom="36dp">
 
-        <FrameLayout
-            android:layout_width="52dp"
-            android:layout_height="52dp"
-            android:layout_marginEnd="12dp">
+        <TextView
+            android:id="@+id/call_peer_name"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="#FFFFFF"
+            android:textSize="26sp"
+            android:textStyle="bold" />
 
-            <ImageButton
-                android:id="@+id/toggle_mic_button"
-                android:layout_width="52dp"
-                android:layout_height="52dp"
-                android:background="@drawable/call_bg_circle_dark"
-                android:contentDescription="Mute"
-                android:src="@drawable/ic_call_mic"
-                android:tint="#FFFFFF" />
-
-            <ImageView
-                android:id="@+id/mic_slash"
-                android:layout_width="36dp"
-                android:layout_height="36dp"
-                android:layout_gravity="center"
-                android:src="@drawable/ic_call_slash"
-                android:visibility="gone" />
-        </FrameLayout>
-
-        <FrameLayout
-            android:layout_width="52dp"
-            android:layout_height="52dp"
-            android:layout_marginEnd="12dp">
-
-            <ImageButton
-                android:id="@+id/toggle_camera_button"
-                android:layout_width="52dp"
-                android:layout_height="52dp"
-                android:background="@drawable/call_bg_circle_dark"
-                android:contentDescription="Camera"
-                android:src="@drawable/ic_call_videocam"
-                android:tint="#FFFFFF" />
-
-            <ImageView
-                android:id="@+id/camera_slash"
-                android:layout_width="36dp"
-                android:layout_height="36dp"
-                android:layout_gravity="center"
-                android:src="@drawable/ic_call_slash"
-                android:visibility="gone" />
-        </FrameLayout>
-
-        <ImageButton
-            android:id="@+id/flip_camera_button"
-            android:layout_width="52dp"
-            android:layout_height="52dp"
-            android:layout_marginEnd="12dp"
-            android:background="@drawable/call_bg_circle_dark"
-            android:contentDescription="Flip Camera"
-            android:src="@drawable/ic_call_flip"
-            android:tint="#FFFFFF"
+        <TextView
+            android:id="@+id/call_duration"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:textColor="#B3FFFFFF"
+            android:textSize="15sp"
             android:visibility="gone" />
 
-        <ImageButton
-            android:id="@+id/hangup_button"
-            android:layout_width="60dp"
-            android:layout_height="60dp"
-            android:layout_marginEnd="12dp"
-            android:background="@drawable/call_bg_circle_red"
-            android:contentDescription="Hang Up"
-            android:src="@drawable/ic_call_phone"
-            android:tint="#FFFFFF"
-            android:rotation="135" />
+        <TextView
+            android:id="@+id/call_status"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:textColor="#80FFFFFF"
+            android:textSize="14sp" />
 
-        <ImageButton
-            android:id="@+id/toggle_speaker_button"
-            android:layout_width="52dp"
-            android:layout_height="52dp"
-            android:background="@drawable/call_bg_circle_dark"
-            android:contentDescription="Speaker"
-            android:src="@drawable/ic_call_speaker"
-            android:tint="#FFFFFF" />
     </LinearLayout>
 
-</RelativeLayout>
+    <!-- Layer 4: self-view PiP — top-right, portrait aspect, rounded corners -->
+    <FrameLayout
+        android:layout_width="96dp"
+        android:layout_height="128dp"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="152dp"
+        android:layout_marginEnd="12dp"
+        android:background="@drawable/call_bg_pip"
+        android:clipToOutline="true"
+        android:elevation="4dp">
+
+        <org.webrtc.SurfaceViewRenderer
+            android:id="@+id/pip_video_view"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:visibility="invisible" />
+
+    </FrameLayout>
+
+    <!-- Layer 5: bottom scrim + controls -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:background="@drawable/call_scrim_bottom"
+        android:orientation="vertical"
+        android:paddingTop="48dp"
+        android:paddingBottom="48dp">
+
+        <!-- Incoming: accept / decline -->
+        <LinearLayout
+            android:id="@+id/incoming_buttons"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:layout_marginEnd="64dp">
+
+                <ImageButton
+                    android:id="@+id/accept_button"
+                    android:layout_width="68dp"
+                    android:layout_height="68dp"
+                    android:background="@drawable/call_bg_circle_green"
+                    android:contentDescription="Accept"
+                    android:src="@drawable/ic_call_phone"
+                    android:tint="#FFFFFF" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Accept"
+                    android:textColor="#B3FFFFFF"
+                    android:textSize="12sp" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:orientation="vertical">
+
+                <ImageButton
+                    android:id="@+id/decline_button"
+                    android:layout_width="68dp"
+                    android:layout_height="68dp"
+                    android:background="@drawable/call_bg_circle_red"
+                    android:contentDescription="Decline"
+                    android:rotation="135"
+                    android:src="@drawable/ic_call_phone"
+                    android:tint="#FFFFFF" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Decline"
+                    android:textColor="#B3FFFFFF"
+                    android:textSize="12sp" />
+
+            </LinearLayout>
+
+        </LinearLayout>
+
+        <!-- In-call controls: mute / camera / flip / hangup / speaker -->
+        <LinearLayout
+            android:id="@+id/control_panel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:orientation="horizontal">
+
+            <FrameLayout
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:layout_marginHorizontal="10dp">
+
+                <ImageButton
+                    android:id="@+id/toggle_mic_button"
+                    android:layout_width="56dp"
+                    android:layout_height="56dp"
+                    android:background="@drawable/call_bg_circle_dark"
+                    android:contentDescription="Mute"
+                    android:src="@drawable/ic_call_mic"
+                    android:tint="#FFFFFF" />
+
+                <ImageView
+                    android:id="@+id/mic_slash"
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:layout_gravity="center"
+                    android:src="@drawable/ic_call_slash"
+                    android:tint="#FF6B6B"
+                    android:visibility="gone" />
+
+            </FrameLayout>
+
+            <FrameLayout
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:layout_marginHorizontal="10dp">
+
+                <ImageButton
+                    android:id="@+id/toggle_camera_button"
+                    android:layout_width="56dp"
+                    android:layout_height="56dp"
+                    android:background="@drawable/call_bg_circle_dark"
+                    android:contentDescription="Camera"
+                    android:src="@drawable/ic_call_videocam"
+                    android:tint="#FFFFFF" />
+
+                <ImageView
+                    android:id="@+id/camera_slash"
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:layout_gravity="center"
+                    android:src="@drawable/ic_call_slash"
+                    android:tint="#FF6B6B"
+                    android:visibility="visible" />
+
+            </FrameLayout>
+
+            <ImageButton
+                android:id="@+id/flip_camera_button"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:layout_marginHorizontal="10dp"
+                android:background="@drawable/call_bg_circle_dark"
+                android:contentDescription="Flip Camera"
+                android:src="@drawable/ic_call_flip"
+                android:tint="#FFFFFF"
+                android:visibility="gone" />
+
+            <ImageButton
+                android:id="@+id/hangup_button"
+                android:layout_width="64dp"
+                android:layout_height="64dp"
+                android:layout_marginHorizontal="10dp"
+                android:background="@drawable/call_bg_circle_red"
+                android:contentDescription="Hang Up"
+                android:rotation="135"
+                android:src="@drawable/ic_call_phone"
+                android:tint="#FFFFFF" />
+
+            <ImageButton
+                android:id="@+id/toggle_speaker_button"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:layout_marginHorizontal="10dp"
+                android:background="@drawable/call_bg_circle_dark"
+                android:contentDescription="Speaker"
+                android:src="@drawable/ic_call_speaker"
+                android:tint="#FFFFFF" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+</FrameLayout>

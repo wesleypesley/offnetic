@@ -58,6 +58,7 @@ class CallActivity : ComponentActivity() {
     private lateinit var toggleSpeakerBtn: ImageButton
     private lateinit var cameraOffOverlay: View
     private lateinit var cameraOffNameTv: TextView
+    private lateinit var cameraOffNameLabelTv: TextView
 
     private var peerPublicKey: String = ""
     private var isIncoming: Boolean = false
@@ -154,6 +155,7 @@ class CallActivity : ComponentActivity() {
         toggleSpeakerBtn = findViewById(R.id.toggle_speaker_button)
         cameraOffOverlay = findViewById(R.id.camera_off_overlay)
         cameraOffNameTv = findViewById(R.id.camera_off_name)
+        cameraOffNameLabelTv = findViewById(R.id.camera_off_name_label)
 
         webRtcManager.initSurface(fullscreenRenderer)
         fullscreenRenderer.setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FILL)
@@ -198,6 +200,7 @@ class CallActivity : ComponentActivity() {
         pendingCameraEnable = false
         pipRenderer.visibility = View.INVISIBLE
         fullscreenRenderer.visibility = View.INVISIBLE
+        durationTv.visibility = View.GONE
         cameraOffOverlay.visibility = View.GONE
         toggleCameraBtn.setColorFilter(0x40FFFFFF)
         cameraSlash.visibility = View.VISIBLE
@@ -212,7 +215,8 @@ class CallActivity : ComponentActivity() {
             val displayName = contact?.displayName ?: peerPublicKey.take(12)
 
             peerNameTv.text = displayName
-            cameraOffNameTv.text = displayName
+            cameraOffNameTv.text = displayName.firstOrNull()?.uppercaseChar()?.toString() ?: "?"
+            cameraOffNameLabelTv.text = displayName
 
             if (isIncoming) {
                 callViewModel.acceptIncomingCall(peerPublicKey, displayName)
@@ -280,6 +284,7 @@ class CallActivity : ComponentActivity() {
             }
             CallPhase.CONNECTED -> {
                 statusTv.text = ""
+                durationTv.visibility = View.VISIBLE
                 incomingButtons.visibility = View.GONE
                 controlPanel.visibility = View.VISIBLE
                 if (!tracksBound) {
@@ -295,6 +300,7 @@ class CallActivity : ComponentActivity() {
             }
             CallPhase.ENDED -> {
                 statusTv.text = state.error ?: "Call ended"
+                durationTv.visibility = View.GONE
                 controlPanel.visibility = View.GONE
                 incomingButtons.visibility = View.GONE
                 pipRenderer.visibility = View.INVISIBLE
@@ -312,11 +318,7 @@ class CallActivity : ComponentActivity() {
         }
 
         if (state.phase == CallPhase.CONNECTED) {
-            if (state.isCameraOn) {
-                cameraOffOverlay.visibility = View.GONE
-            } else {
-                cameraOffOverlay.visibility = View.VISIBLE
-            }
+            cameraOffOverlay.visibility = if (state.isRemoteCameraOn) View.GONE else View.VISIBLE
         } else if (state.phase != CallPhase.ENDED) {
             cameraOffOverlay.visibility = View.GONE
         }
