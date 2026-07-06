@@ -344,7 +344,59 @@
 
 ---
 
+---
+
+## Database Layer Audit
+
+### Critical
+| # | File | Line | Issue |
+|---|---|---|---|
+| DB1 | `SignalProtocolStoreImpl.kt` | 58,61,76,84,91,96,100,103,107,113,118,122,125,135,140,144,147,151,155,174,182,189,199,205,209 | **`runBlocking` on all 25 protocol store methods.** Libsignal calls these synchronously during encrypt/decrypt. `decryptMessage()` runs on `Dispatchers.IO` → `SessionCipher.decrypt()` → store call → `runBlocking` blocks the IO dispatcher thread. Concurrent relay inbox sync (many gift-wraps) can exhaust the thread pool. No simple fix — the store must become fully suspend-based, but `SignalProtocolStore` is a Java interface. |
+| DB2 | `RelaySessionService.kt` | 27–59 | **No `@Transaction` on multi-step writes.** `onSessionReady()` re-encrypts messages, upserts to `relay_outbox`, marks messages as `SENT_RELAY` — all sequential without a transaction. Crash mid-loop = messages marked sent but not actually in outbox → silently lost. |
+| DB3 | `ContactDetailViewModel.kt` | 69–87 | **`hardDelete()` touches 4 DAOs with no `@Transaction`.** Deletes messages → sessions → prekeys → contact sequentially. Crash between steps = orphaned rows, inconsistent state. |
+| DB4 | `ContactDao.kt` | `getByNostrPublicKey()` | **Missing index on `nostrPublicKey` column.** Called on every incoming relay gift-wrap message. Full table scan per message. Add `@Index` on `nostrPublicKey`. |
+
+### High
+| # | File | Line | Issue |
+|---|---|---|---|
+| DB5 | `SessionRepository.kt` + `Impl` + DI | all | **SessionRepository is dead code.** Defined, implemented, Hilt-registered — but **zero consumers inject it.** No ViewModel, Service, or Manager calls any method. The `sessions` table is never populated. |
+| DB6 | `entity/Session.kt`, `dao/SessionDao.kt`, `domain/model/Session.kt`, `repository/SessionRepository*.kt`, `DatabaseModule.kt:68–69` | all | **`sessions` table is a zombie.** Table exists in schema, full stack (entity + DAO + domain model + repository + DI binding) wired, but table is **never written to** — `sessionDao.insert()` only called from dead repository. Only access is `sessionDao.deleteByRemotePublicKey()` in `hardDelete()` — deleting from an always-empty table. Plaintext ratchet key columns (`rootKey`, `chainKeySend`, `chainKeyRecv`) are a security risk even if unused. Remove the entire stack. |
+| DB7 | `schema` | N/A | **Two separate session storage systems.** `sessions` (custom Double Ratchet with plaintext key columns, dead) + `signal_sessions` (libsignal opaque blobs, active). If anyone ever populates the dead table, two conflicting crypto states coexist. |
+| DB8 | `ContactDetailViewModel.kt` | 32,83 | **ViewModel bypasses repository layer.** Injects `SessionDao` directly instead of using `SessionRepository`. Also injects `ContactDao`, `MessageDao`, `PreKeyDao` directly. `ChatListViewModel` / `ChatViewModel` also inject raw DAOs. Repository abstractions exist but are half-used — architectural inconsistency. |
+| DB9 | `PendingRequestDao.kt` | `getByPeer()` | **No `ORDER BY`, no `LIMIT 1`.** Multiple requests from the same peer → SQLite returns an arbitrary row. Add `ORDER BY createdAt DESC LIMIT 1`. |
+| DB10 | `SessionDao.kt` | `getByRemotePublicKey()` | **Returns arbitrary session.** Sessions keyed by `sessionId`, not `remotePublicKey`. If a contact has multiple sessions, returns a random one. No `ORDER BY`. Already moot since table is empty — but the bug is in the design. |
+
+### Moderate
+| # | File | Line | Issue |
+|---|---|---|---|
+| DB11 | `RelayStateDao.kt` | `setLastSeen()` | **Raw `INSERT OR REPLACE` SQL** instead of `@Insert(onConflict = REPLACE)`. Works but inconsistent with rest of codebase. |
+| DB12 | `entity/Profile.kt`, `entity/Contact.kt` | all | **Field duplication across tables.** `displayName`, `avatarHash`, `avatarBlob` duplicated in both `profiles` and `contacts`. Profile updates don't propagate to Contact row → stale display info. |
+| DB13 | `PreKeyDao.kt`, `CallHistoryDao.kt` | N/A | **No TTL cleanup.** `prekey_bundles` and `call_history` grow indefinitely. No pruning queries exist for either table. |
+| DB14 | `MessageDao.kt` | `getUnsentMessagesForChat()`, `markDelivered()`, `markRead()`, `markSentRelay()` | **Enum names hardcoded in SQL strings.** `deliveryState = 'SAVED'`, `deliveryState IN ('SENT_LOCAL','SENT_RELAY')` — if `MessageDeliveryState` enum is renamed, these queries silently break. Room can't verify string literals in raw `@Query`. |
+| DB15 | `SignalProtocolStoreImpl.kt` | 41–51 | **Identity key pair cached in-memory, never refreshed.** `cachedIdentityKeyPair` + `cachedRegistrationId` set once via `setIdentityKeyPair()`/`setRegistrationId()`. If the underlying identity is rotated, the cached values are stale with no invalidation path. |
+| DB16 | `dao/SignalSessionDao.kt` | `getSubDeviceSessions()` | **LIKE query with concatenation.** `address LIKE :name \|\| ':%'` — string building in SQL. Room parameterizes but the pattern is fragile. |
+| DB17 | `entity/Message.kt` | 13–14 | **`messageUuid` defaults at construction.** `UUID.randomUUID().toString()` called in data class body — Room may or may not preserve this on `@Insert`. Depends on how Room generates the INSERT statement. Explicitly set before insert to be safe. |
+
+### Minor
+| # | File | Line | Issue |
+|---|---|---|---|
+| DB18 | `util/ByteArrayConverter.kt` | all | **Dead code.** Not registered in `@TypeConverters` on `OffneticDatabase`. Room natively handles `ByteArray` columns. |
+| DB19 | `MessageDao.kt` | `insert()` | **Returned `Long` ID discarded in 8 of 12 call sites.** `NcapManagerImpl` (4x), `RelayInboxHandler` (2x), `AddContactConfirmViewModel` (1x), `MessageRepositoryImpl.insert()` (1x) all ignore the auto-generated PK. Only `ChatViewModel` captures it for subsequent `update()`. |
+| DB20 | `SessionDao.kt` | `getAll()` | **Flow never collected.** `SessionDao.getAll()` → `SessionRepositoryImpl.getAll()` → `Result.Success(...)` — but no consumer subscribes. Dead reactive pipeline. |
+| DB21 | `RelayOutboxDao.kt` | `evictOldestPending()` | **Fragile subquery.** `NOT IN (SELECT ... LIMIT :cap)` — unusual SQLite pattern. If the subquery returns 0 rows (no pending entries for chat), `NOT IN (<empty>)` evaluates to TRUE for all rows — but there are no rows to match, so it's a no-op. Works but hard to reason about in code review. |
+| DB22 | `MessageDao.kt` | `getChatSummaries()` | **Complex subquery without covering index.** `INNER JOIN (SELECT chatId, MAX(id) AS maxId FROM messages GROUP BY chatId)` — no index on `messages(chatId, id)`. Preexisting index on `messages(chatId, timestamp)` helps but `MAX(id)` can't use it. |
+| DB23 | `OffneticDatabase.kt` | 87–98 | **Companion `getInstance()` is dead code.** Zero callers. If invoked, creates unencrypted DB (no SQLCipher `SupportFactory`) — data-at-rest protection bypassed. Hilt `DatabaseModule` is the real path. Remove or add deprecation warning. |
+
+### Already tracked (cross-reference)
+| # | Existing # | Issue |
+|---|---|---|
+| DB24 | O4 | `fallbackToDestructiveMigration()` — all data wiped on schema change |
+| DB25 | O22 | `exportSchema = false` — can't test migrations |
+| DB26 | O23 | Companion `getInstance()` dead code (duplicate of DB23) |
+
+---
+
 ## Notes
-- Total issues: **86 runtime bugs** + **26 hardcoded design items** + **33 second-pass findings** + **7 initial chat issues** + **39 deep chat audit** = **191 total**
+- Total issues: **86 runtime bugs** + **26 hardcoded design items** + **33 second-pass findings** + **7 initial chat issues** + **39 deep chat audit** + **26 database audit** = **217 total**
 - No TODO/FIXME/HACK comments found in codebase
 - All cryptographic parameters (AES key/nonce/tag sizes, Kyber-1024, Bech32, Signal protocol values) are correctly hardcoded per protocol spec
