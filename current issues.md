@@ -396,7 +396,41 @@
 
 ---
 
+## Connection Requests Tab Audit
+
+Feature path: `RequestsScreen.kt` → `RequestsViewModel.kt` → `RelayRequestManager.kt`; inbound via `RelayInboxHandler.handleRequest/handleBundle`; outbound created in `ChatViewModel.sendEncrypted`; DAO `PendingRequestDao`. The Nearby (NCAP) path does not use this table.
+
+### High
+| # | File | Line | Issue |
+|---|---|---|---|
+| CR1 | `RelayRequestManager.kt` | 60–63 | **Accept marks `ACCEPTED` even when the bundle never sends, and never retries → permanent, invisible half-open connection.** `sendBundle()` return value is discarded and `updateState(ACCEPTED)` runs unconditionally. If you tap Accept while offline / before relays reconnect, the peer never receives your prekey bundle, so they can't build a session to you. Sent bundles have **no retry** (unlike outbound *requests*, which `republishOutbound` retries — `sendBundle` is only ever called here, fire-and-forget). Worse, after Accept you've added them as a contact, so their retries hit `handleRequest:126` (`getByNostrPublicKey != null`) and are **silently dropped**. Channel stays broken until their 72h/6-attempt budget expires, with no UI indication and no recovery path. Elaborates/supersedes **#43**. |
+
+### Medium
+| # | File | Line | Issue |
+|---|---|---|---|
+| CR2 | `RelayRequestManager.kt` / `RelayInboxHandler.kt` | 66–69 / 138 | **"Ignore" is not durable — an ignored requester reappears.** `ignoreRequest` sets state `EXPIRED` but adds no contact and no suppression. The sender (no session yet) keeps republishing; the re-arriving request hits `upsert` with `OnConflictStrategy.REPLACE` keyed on `senderNpub` → row resurrects to `PENDING` (entity default). Reappears up to the sender's `MAX_REPUBLISH` (6, and that counter resets on the sender's app restart). "Ignore" effectively behaves like "snooze 5 minutes." |
+| CR3 | `PendingRequestDao.kt` / `RelayRequestManager.kt` | `getInboundPending()` / 34 | **Inbound requests never time-expire.** The list query filters `direction='INBOUND' AND state='PENDING'` only — it never checks `expiresAt`. Requests carry a 30-day `expiresAt`, but nothing enforces it: `deleteExpired`/`clear` are dead code (zero callers) and no job marks time-expired rows. Untouched requests sit in the tab (and in the badge count) forever. |
+| CR4 | `RequestsScreen.kt` | 168–189 | **Accept/Ignore have no disabled/in-progress state → double-taps + no feedback.** Buttons stay enabled while the action's coroutine runs a network round-trip (send bundle). On a slow link the row doesn't change for seconds, so users tap Accept again → the accept runs twice and the peer gets duplicate bundles. No spinner, no "Accepting…", no lock. Amplifies CR1's invisibility. |
+| CR5 | `RequestsScreen.kt` / `RelayInboxHandler.kt` | 143–164 / 131 | **Sender-controlled display name is spoofable/blank/unbounded, and identity shown is weak.** The row renders the `name` straight from the sender's packet plus only 12 chars of the key, with no "unverified" signal and no way to view/verify the full key before accepting. `"name":""` (empty, not absent) → blank avatar + blank name (`optString` returns `""`, not the fallback), and accepting saves a contact with an empty name. The name `Text` has no `maxLines`/ellipsis, so long/multi-line names inflate the row. Enables impersonation of a known contact's name. |
+
+### Low
+| # | File | Line | Issue |
+|---|---|---|---|
+| CR6 | `RequestsViewModel.kt` | 31–43 | **Accept/Ignore concurrency race.** Nothing locks the row; tapping Accept then Ignore launches two coroutines that both write state (last-writer-wins). Can end `EXPIRED` after a contact was added and a bundle sent — peer thinks connected, your side shows ignored (or vice-versa). |
+| CR7 | `RelayRequestManager.kt` | 82–85 | **Mutual-request: accepter's queued messages never flush.** If both sides sent requests, accepting creates a local session but never calls `onSessionReady(self)`; `republishOutbound` then marks the mirror outbound `ACCEPTED` without flushing. The accepter's `SAVED` messages to that peer are never encrypted/sent. |
+| CR8 | `RequestsViewModel.kt` | 27–52 | **List is not reactive.** Loads on init + after accept/ignore only. A request arriving via relay while the screen is open won't appear until re-entry (the badge count *does* update live) — stale "0 shown vs N in badge" mismatch. |
+| CR9 | `RelayInboxHandler.kt` | 124–126 | **Self/replayed request not rejected.** No guard for `senderNpub == own npub`; a replay of your own request could create a "request from yourself" row. Edge/unlikely. |
+
+### Note
+| # | Cross-ref | Issue |
+|---|---|---|
+| CR10 | DB9 | **DB9's fix is inert.** `getByPeer` (the method DB9 added `ORDER BY … LIMIT 1` to), plus `deleteExpired` and `clear`, all have **zero callers**. The DB9 change is harmless but has no runtime effect. |
+
+Also relevant, already tracked: **#43** (accept bundle-send failure — expanded by CR1), **#44** (peer bundle processing failure silently ignored, contact still created), **#42** (outbound republish check-then-act race), **#24** (concurrent `sendEncrypted` duplicates connection requests).
+
+---
+
 ## Notes
-- Total issues: **86 runtime bugs** + **26 hardcoded design items** + **33 second-pass findings** + **7 initial chat issues** + **39 deep chat audit** + **26 database audit** = **217 total**
+- Total issues: **86 runtime bugs** + **26 hardcoded design items** + **33 second-pass findings** + **7 initial chat issues** + **39 deep chat audit** + **26 database audit** + **10 connection-requests audit** (CR1–CR10; CR1 & CR10 cross-reference #43 & DB9) = **227 total**
 - No TODO/FIXME/HACK comments found in codebase
 - All cryptographic parameters (AES key/nonce/tag sizes, Kyber-1024, Bech32, Signal protocol values) are correctly hardcoded per protocol spec

@@ -46,7 +46,7 @@ class RelaySessionServiceTest {
         relayOutboxDao = db.relayOutboxDao()
         signal = mockk()
         processor = mockk(relaxed = true)
-        service = RelaySessionService(messages, identityDao, signal, relayOutboxDao, processor)
+        service = RelaySessionService(db, messages, identityDao, signal, relayOutboxDao, processor)
     }
 
     @After
