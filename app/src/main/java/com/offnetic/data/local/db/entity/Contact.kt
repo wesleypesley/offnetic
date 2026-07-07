@@ -1,10 +1,10 @@
 package com.offnetic.data.local.db.entity
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
-import android.util.Base64
 
-@Entity(tableName = "contacts")
+@Entity(tableName = "contacts", indices = [Index(value = ["nostrPublicKey"])])
 data class Contact(
     @PrimaryKey
     val publicKey: String,

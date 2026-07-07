@@ -96,10 +96,10 @@ class NcapManagerImpl @Inject constructor(
     override val incomingCallEvents: SharedFlow<String> = _incomingCallEvents.asSharedFlow()
 
     private val endpointPeers = ConcurrentHashMap<String, PeerInfo>()
-    private var isAdvertising = false
-    private var isDiscovering = false
+    @Volatile private var isAdvertising = false
+    @Volatile private var isDiscovering = false
     private var currentAdvertisingName: String = ""
-    @Volatile private var callActiveCount = 0
+    private val callActiveCount = AtomicInteger(0)
     private val deferredFilePayloads = ConcurrentHashMap<Long, Pair<String, Payload>>()
     private val processedFilePayloads = ConcurrentHashMap.newKeySet<Long>()
 
@@ -107,19 +107,21 @@ class NcapManagerImpl @Inject constructor(
         return identityDao.getIdentity()?.publicKey ?: ""
     }
 
-    override val isCallActive: Boolean get() = callActiveCount > 0
+    override val isCallActive: Boolean get() = callActiveCount.get() > 0
 
     override fun setCallActive(active: Boolean) {
-        val prevActive = callActiveCount > 0
+        val prev: Int
+        val now: Int
         if (active) {
-            callActiveCount++
+            prev = callActiveCount.getAndIncrement()
+            now = prev + 1
         } else {
-            callActiveCount = (callActiveCount - 1).coerceAtLeast(0)
+            prev = callActiveCount.getAndUpdate { maxOf(0, it - 1) }
+            now = maxOf(0, prev - 1)
         }
-        val nowActive = callActiveCount > 0
-        Timber.d("Call active count: $callActiveCount (was $prevActive, now $nowActive)")
+        Timber.d("Call active count: $now (was $prev)")
 
-        if (prevActive && !nowActive) {
+        if (prev > 0 && now == 0) {
             processDeferredFiles()
         }
     }
@@ -160,14 +162,23 @@ class NcapManagerImpl @Inject constructor(
             updatePeerState(endpointId, ConnectionState.CONNECTING)
 
             scope.launch {
+                val contact = contactDao.getByPublicKey(publicKey)
+                if (contact == null) {
+                    // Only accept connections from known contacts — auto-accepting strangers
+                    // lets any nearby device force a handshake and probe the local identity.
+                    Timber.w("onConnectionInitiated: rejecting unknown peer ${publicKey.take(8)}")
+                    android.util.Log.e("NcapConn", "onConnectionInitiated: REJECT unknown ${publicKey.take(12)}")
+                    rejectConnection(endpointId)
+                    updatePeerState(endpointId, ConnectionState.DISCONNECTED)
+                    return@launch
+                }
+
                 if (!endpointPeers.containsKey(endpointId)) {
-                    val contact = contactDao.getByPublicKey(publicKey)
-                    val displayName = contact?.displayName ?: publicKey.take(12)
                     endpointPeers[endpointId] = PeerInfo(
                         endpointId = endpointId,
                         publicKey = publicKey,
-                        displayName = displayName,
-                        isContact = contact != null,
+                        displayName = contact.displayName,
+                        isContact = true,
                         connectionState = ConnectionState.CONNECTING,
                         lastSeenAt = System.currentTimeMillis(),
                         lastPingedAt = 0L
@@ -598,8 +609,8 @@ class NcapManagerImpl @Inject constructor(
         mimeType: String,
         durationLabel: String?
     ) {
-        if (callActiveCount > 0) {
-            Timber.d("sendFile: call active (count=$callActiveCount), rejecting file send")
+        if (callActiveCount.get() > 0) {
+            Timber.d("sendFile: call active (count=${callActiveCount.get()}), rejecting file send")
             throw IllegalStateException("Cannot send files during an active call")
         }
         val MAX_FILE_SIZE = 100L * 1024 * 1024
@@ -899,7 +910,7 @@ class NcapManagerImpl @Inject constructor(
                             val sdpJson = String(envelope.payload, Charsets.UTF_8)
                             WebRtcManager.pendingIncomingOffers[senderPublicKey] = Pair(sdpJson, endpointId)
                             android.util.Log.e("offCall", "CALL_OFFER stored in static cache for ${senderPublicKey.take(8)}")
-                            if (callActiveCount == 0) {
+                            if (callActiveCount.get() == 0) {
                                 val callIntent = android.content.Intent(context, IncomingCallService::class.java).apply {
                                     action = IncomingCallService.ACTION_START_RINGING
                                     putExtra(IncomingCallService.EXTRA_PEER_PUBLIC_KEY, senderPublicKey)
@@ -1106,8 +1117,8 @@ class NcapManagerImpl @Inject constructor(
             android.util.Log.e("NcapFile", "handleIncomingFile: payloadId=${payload.id} ALREADY PROCESSED — skipping duplicate")
             return
         }
-        if (callActiveCount > 0) {
-            android.util.Log.e("NcapFile", "handleIncomingFile: call active (count=$callActiveCount), deferring payloadId=${payload.id}")
+        if (callActiveCount.get() > 0) {
+            android.util.Log.e("NcapFile", "handleIncomingFile: call active (count=${callActiveCount.get()}), deferring payloadId=${payload.id}")
             deferredFilePayloads[payload.id] = Pair(endpointId, payload)
             processedFilePayloads.remove(payload.id)
             return

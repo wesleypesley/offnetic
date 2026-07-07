@@ -21,7 +21,7 @@ interface PendingRequestDao {
     @Query("SELECT * FROM pending_request WHERE direction = 'OUTBOUND' AND state = 'PENDING' ORDER BY createdAt ASC")
     suspend fun getOutboundPending(): List<PendingRequestEntity>
 
-    @Query("SELECT * FROM pending_request WHERE peerOffneticKey = :peerOffneticKey")
+    @Query("SELECT * FROM pending_request WHERE peerOffneticKey = :peerOffneticKey ORDER BY createdAt DESC LIMIT 1")
     suspend fun getByPeer(peerOffneticKey: String): PendingRequestEntity?
 
     @Query("UPDATE pending_request SET state = :state WHERE requestId = :requestId")

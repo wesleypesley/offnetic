@@ -14,7 +14,6 @@ import com.offnetic.data.local.db.dao.RelayOutboxDao
 import com.offnetic.data.local.db.dao.RelayStateDao
 import com.offnetic.data.local.db.dao.NostrIdentityDao
 import com.offnetic.data.local.db.dao.ProfileDao
-import com.offnetic.data.local.db.dao.SessionDao
 import com.offnetic.data.local.db.dao.SignalIdentityDao
 import com.offnetic.data.local.db.dao.SignalPreKeyDao
 import com.offnetic.data.local.db.dao.SignalSenderKeyDao
@@ -47,6 +46,7 @@ object DatabaseModule {
             "offnetic.db"
         )
             .openHelperFactory(factory)
+            .addMigrations(OffneticDatabase.MIGRATION_9_10)
             .addCallback(object : androidx.room.RoomDatabase.Callback() {
                 override fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                     super.onCreate(db)
@@ -57,7 +57,6 @@ object DatabaseModule {
                     Timber.d("Database opened (SQLCipher)")
                 }
             })
-            .fallbackToDestructiveMigration()
             .build()
     }
 
@@ -66,9 +65,6 @@ object DatabaseModule {
 
     @Provides @Singleton
     fun provideMessageDao(database: OffneticDatabase): MessageDao = database.messageDao()
-
-    @Provides @Singleton
-    fun provideSessionDao(database: OffneticDatabase): SessionDao = database.sessionDao()
 
     @Provides @Singleton
     fun providePreKeyDao(database: OffneticDatabase): PreKeyDao = database.preKeyDao()

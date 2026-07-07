@@ -3,11 +3,12 @@ package com.offnetic.ui.contacts
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.room.withTransaction
 import com.offnetic.data.crypto.NcapEnvelope
+import com.offnetic.data.local.db.OffneticDatabase
 import com.offnetic.data.local.db.dao.ContactDao
 import com.offnetic.data.local.db.dao.MessageDao
 import com.offnetic.data.local.db.dao.PreKeyDao
-import com.offnetic.data.local.db.dao.SessionDao
 import com.offnetic.data.nearby.NcapManager
 import com.offnetic.domain.model.Contact
 import com.offnetic.ui.navigation.Routes
@@ -27,9 +28,9 @@ data class ContactDetailUiState(
 @HiltViewModel
 class ContactDetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
+    private val database: OffneticDatabase,
     private val contactDao: ContactDao,
     private val messageDao: MessageDao,
-    private val sessionDao: SessionDao,
     private val preKeyDao: PreKeyDao,
     private val ncapManager: NcapManager
 ) : ViewModel() {
@@ -79,10 +80,12 @@ class ContactDetailViewModel @Inject constructor(
                 }
             }
 
-            messageDao.deleteAllForChat(publicKey)
-            sessionDao.deleteByRemotePublicKey(publicKey)
-            preKeyDao.delete(publicKey)
-            contactDao.delete(publicKey)
+            // Atomic — a crash mid-delete won't leave orphaned rows in any of the tables
+            database.withTransaction {
+                messageDao.deleteAllForChat(publicKey)
+                preKeyDao.delete(publicKey)
+                contactDao.delete(publicKey)
+            }
 
             _uiState.value = _uiState.value.copy(
                 contact = null,

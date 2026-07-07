@@ -1,6 +1,8 @@
 package com.offnetic.data.relay
 
+import androidx.room.withTransaction
 import com.offnetic.data.crypto.SignalProtocolManager
+import com.offnetic.data.local.db.OffneticDatabase
 import com.offnetic.data.local.db.dao.IdentityDao
 import com.offnetic.data.local.db.dao.MessageDao
 import com.offnetic.data.local.db.dao.RelayOutboxDao
@@ -16,6 +18,7 @@ import timber.log.Timber
 
 @Singleton
 class RelaySessionService @Inject constructor(
+    private val database: OffneticDatabase,
     private val messageDao: MessageDao,
     private val identityDao: IdentityDao,
     private val signalProtocolManager: SignalProtocolManager,
@@ -29,34 +32,43 @@ class RelaySessionService @Inject constructor(
         val myPk = myIdentity.publicKey
         val messages = messageDao.getUnsentMessagesForChat(contactPublicKey, myPk)
 
-        for (msg in messages) {
-            if (msg.type != Message.TYPE_TEXT) continue
-            val plaintext = JSONObject().apply {
-                put("content", msg.content)
-                put("timestamp", System.currentTimeMillis())
-            }.toString().toByteArray(Charsets.UTF_8)
+        // Encrypt outside the transaction — withContext(IO) inside encryptMessage would break
+        // Room's transaction coroutine context if called from inside withTransaction.
+        val encrypted = messages
+            .filter { it.type == Message.TYPE_TEXT }
+            .mapNotNull { msg ->
+                val plaintext = JSONObject().apply {
+                    put("content", msg.content)
+                    put("timestamp", msg.timestamp)
+                }.toString().toByteArray(Charsets.UTF_8)
+                val ciphertext = runCatching {
+                    signalProtocolManager.encryptMessage(contactPublicKey, plaintext)
+                }.getOrNull() ?: return@mapNotNull null
+                Pair(msg, ciphertext)
+            }
 
-            val ciphertext = runCatching {
-                signalProtocolManager.encryptMessage(contactPublicKey, plaintext)
-            }.getOrNull() ?: continue
-
+        // Write outbox entries + message state updates atomically — a crash mid-loop
+        // previously left messages marked SENT_RELAY without a corresponding outbox row.
+        database.withTransaction {
             val now = System.currentTimeMillis()
-            relayOutboxDao.upsert(
-                RelayOutboxEntity(
-                    messageUuid = msg.messageUuid,
-                    chatId = contactPublicKey,
-                    ciphertext = ciphertext,
-                    createdAt = now,
-                    expiresAt = now + RELAY_OUTBOX_TTL_MS
+            for ((msg, ciphertext) in encrypted) {
+                relayOutboxDao.upsert(
+                    RelayOutboxEntity(
+                        messageUuid = msg.messageUuid,
+                        chatId = contactPublicKey,
+                        ciphertext = ciphertext,
+                        createdAt = now,
+                        expiresAt = now + RELAY_OUTBOX_TTL_MS
+                    )
                 )
-            )
-            relayOutboxDao.evictOldestPending(contactPublicKey, RELAY_OUTBOX_CAP)
-            messageDao.update(msg.copy(deliveryState = MessageDeliveryState.SENT_RELAY))
-            Timber.d("SessionReady uuid=${msg.messageUuid.take(8)} pk=${contactPublicKey.take(8)} re-encrypted → relay outbox")
+                relayOutboxDao.evictOldestPending(contactPublicKey, RELAY_OUTBOX_CAP)
+                messageDao.update(msg.copy(deliveryState = MessageDeliveryState.SENT_RELAY))
+                Timber.d("SessionReady uuid=${msg.messageUuid.take(8)} pk=${contactPublicKey.take(8)} re-encrypted → relay outbox")
+            }
         }
 
         relayOutboxProcessor.processPending()
-        Timber.d("SessionReady pk=${contactPublicKey.take(8)} retried ${messages.filter { it.type == Message.TYPE_TEXT }.size} messages")
+        Timber.d("SessionReady pk=${contactPublicKey.take(8)} retried ${encrypted.size} messages")
     }
 
     companion object {

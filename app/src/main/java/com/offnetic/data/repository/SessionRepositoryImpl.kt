@@ -5,11 +5,9 @@ import com.offnetic.domain.model.Session
 import com.offnetic.domain.model.Result
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
-import javax.inject.Inject
-import javax.inject.Singleton
-
-@Singleton
-class SessionRepositoryImpl @Inject constructor(
+// Sessions table removed in migration 9→10; this impl is unused — kept to avoid breaking
+// any future consumer that may reference it, but it is no longer wired into Hilt.
+class SessionRepositoryImpl(
     private val sessionDao: SessionDao
 ) : SessionRepository {
 

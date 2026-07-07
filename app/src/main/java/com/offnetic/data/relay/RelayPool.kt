@@ -37,9 +37,9 @@ class RelayPool(
                     conn.incoming.collect { text ->
                         when (val msg = RelayMessage.parse(text)) {
                             is RelayMessage.Event ->
-                                if (deduper.markSeen(msg.event.id)) _events.tryEmit(msg.event)
+                                if (deduper.markSeen(msg.event.id)) _events.emit(msg.event)
                             is RelayMessage.Ok ->
-                                _acks.tryEmit(OkAck(msg.eventId, msg.accepted, conn.url))
+                                _acks.emit(OkAck(msg.eventId, msg.accepted, conn.url))
                             else -> Unit
                         }
                     }

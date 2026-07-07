@@ -2,12 +2,10 @@ package com.offnetic.di
 
 import com.offnetic.data.repository.ContactRepository
 import com.offnetic.data.repository.ContactRepositoryImpl
-import com.offnetic.data.repository.MessageRepository
-import com.offnetic.data.repository.MessageRepositoryImpl
-import com.offnetic.data.repository.SessionRepository
-import com.offnetic.data.repository.SessionRepositoryImpl
 import com.offnetic.data.repository.IdentityRepository
 import com.offnetic.data.repository.IdentityRepositoryImpl
+import com.offnetic.data.repository.MessageRepository
+import com.offnetic.data.repository.MessageRepositoryImpl
 import com.offnetic.data.repository.ProfileRepository
 import com.offnetic.data.repository.ProfileRepositoryImpl
 import dagger.Module
@@ -27,10 +25,6 @@ object RepositoryModule {
     @Provides
     @Singleton
     fun provideMessageRepository(impl: MessageRepositoryImpl): MessageRepository = impl
-
-    @Provides
-    @Singleton
-    fun provideSessionRepository(impl: SessionRepositoryImpl): SessionRepository = impl
 
     @Provides
     @Singleton
