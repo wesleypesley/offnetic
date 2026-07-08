@@ -4,6 +4,8 @@ import com.offnetic.data.crypto.NostrIdentityManager
 import com.offnetic.data.crypto.nostr.NostrEventSigner
 import com.offnetic.data.crypto.nostr.NostrJson
 import com.offnetic.di.Blossom
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -34,29 +36,29 @@ class BlossomClient @Inject constructor(
     }
 
     // Returns list of server base-URLs that now hold the blob. Empty = all failed.
-    suspend fun upload(ciphertext: File, sha256Hex: String): List<String> {
-        val priv = nostrIdentityManager.getKeyPair()?.privateKey ?: return emptyList()
+    suspend fun upload(ciphertext: File, sha256Hex: String): List<String> = withContext(Dispatchers.IO) {
+        val priv = nostrIdentityManager.getKeyPair()?.privateKey ?: return@withContext emptyList()
         var primary: Pair<String, String>? = null
         for (server in DEFAULT_SERVERS) {
             val url = tryUpload(server, ciphertext, sha256Hex, priv)
             if (url != null) { primary = server to url; break }
         }
-        val (primaryServer, primaryUrl) = primary ?: return emptyList()
+        val (primaryServer, primaryUrl) = primary ?: return@withContext emptyList()
         val result = mutableListOf(primaryServer)
         for (server in DEFAULT_SERVERS) {
             if (server == primaryServer) continue
             if (tryMirror(server, primaryUrl, sha256Hex, priv)) result.add(server)
         }
-        return result
+        result
     }
 
     // Returns temp file with verified ciphertext bytes, or null if all servers fail / hash mismatch.
-    suspend fun download(servers: List<String>, sha256Hex: String, cacheDir: File, maxBytes: Long): File? {
+    suspend fun download(servers: List<String>, sha256Hex: String, cacheDir: File, maxBytes: Long): File? = withContext(Dispatchers.IO) {
         for (server in servers) {
             val f = tryDownload(server, sha256Hex, cacheDir, maxBytes)
-            if (f != null) return f
+            if (f != null) return@withContext f
         }
-        return null
+        null
     }
 
     private fun tryUpload(server: String, file: File, sha256Hex: String, priv: ByteArray): String? = try {

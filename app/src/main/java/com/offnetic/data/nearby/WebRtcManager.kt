@@ -97,6 +97,8 @@ class WebRtcManager(
     private val iceGatheringDeferreds = ConcurrentHashMap<String, CompletableDeferred<Unit>>()
 
     companion object {
+        // Keyed by peerPublicKey. Removed on cleanupPeerConnection so stale offers don't accumulate
+        // indefinitely from malicious or abandoned calls (Issue #11).
         val pendingIncomingOffers = ConcurrentHashMap<String, Pair<String, String>>()
 
         fun hasWifiP2pPermission(context: Context): Boolean {
@@ -1046,6 +1048,7 @@ class WebRtcManager(
         pendingSdpOffers.remove(peerPublicKey)
         pendingSdpAnswers.remove(peerPublicKey)
         iceCandidateCache.remove(peerPublicKey)
+        pendingIncomingOffers.remove(peerPublicKey)
     }
 
     private fun launchCallTimeout(peerPublicKey: String, state: MutableStateFlow<CallState>) {

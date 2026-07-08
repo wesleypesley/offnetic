@@ -283,6 +283,9 @@ class CallActivity : ComponentActivity() {
                 controlPanel.visibility = View.GONE
             }
             CallPhase.CONNECTED -> {
+                // Belt-and-suspenders: also fires here for relay auto-connect paths
+                // where the user accepted from notification without tapping Accept in UI
+                stopIncomingRinging()
                 statusTv.text = ""
                 durationTv.visibility = View.VISIBLE
                 incomingButtons.visibility = View.GONE

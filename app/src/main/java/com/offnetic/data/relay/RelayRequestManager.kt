@@ -12,6 +12,7 @@ import com.offnetic.data.local.db.entity.RequestState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import timber.log.Timber
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -34,6 +35,7 @@ class RelayRequestManager @Inject constructor(
     suspend fun pendingRequests(): List<PendingRequestEntity> = pendingRequestDao.getInboundPending()
 
     suspend fun refreshCount() {
+        pendingRequestDao.deleteExpired(System.currentTimeMillis())
         _inboundCount.value = pendingRequestDao.getInboundPending().size
     }
 
@@ -41,10 +43,11 @@ class RelayRequestManager @Inject constructor(
         val request = pendingRequestDao.getById(requestId) ?: return
         if (decodeNpub(request.peerNostrKey) == null) return
 
+        // Idempotent — safe to call even if the contact already exists from a previous attempt
         contactDao.insertIfNotExists(
             Contact(
                 publicKey = request.peerOffneticKey,
-                displayName = request.displayName,
+                displayName = request.displayName.ifBlank { request.peerOffneticKey.take(12) },
                 nostrPublicKey = request.peerNostrKey,
                 isVerified = false,
                 addedAt = System.currentTimeMillis()
@@ -54,12 +57,24 @@ class RelayRequestManager @Inject constructor(
         request.bundle?.let { peerBundle ->
             runCatching {
                 signalProtocolManager.processBundleAndCreateSession(request.peerOffneticKey, peerBundle)
-            }
+            }.onFailure { Timber.e(it, "acceptRequest: session build failed for ${request.peerOffneticKey.take(8)}") }
         }
 
-        val bundle = signalProtocolManager.buildPreKeyBundleBytes()
-        controlSender.sendBundle(request.peerNostrKey, bundle)
-        pendingRequestDao.updateState(requestId, RequestState.ACCEPTED)
+        // Only mark ACCEPTED if we can actually deliver our prekey bundle.
+        // If offline, keep the row PENDING so the user can retry (contact + session are already
+        // created above; tapping Accept again is idempotent via insertIfNotExists + TOFU).
+        val bundle = runCatching { signalProtocolManager.buildPreKeyBundleBytes() }.getOrElse {
+            Timber.e(it, "acceptRequest: bundle build failed, keeping PENDING")
+            refreshCount()
+            return
+        }
+        val sent = controlSender.sendBundle(request.peerNostrKey, bundle)
+        if (sent) {
+            pendingRequestDao.updateState(requestId, RequestState.ACCEPTED)
+            Timber.d("acceptRequest: ACCEPTED ${request.peerOffneticKey.take(8)}")
+        } else {
+            Timber.w("acceptRequest: bundle send failed for ${request.peerNostrKey.take(8)} — keeping PENDING for retry")
+        }
         refreshCount()
     }
 
@@ -70,6 +85,9 @@ class RelayRequestManager @Inject constructor(
 
     suspend fun republishOutbound() {
         val now = System.currentTimeMillis()
+        // Prune expired inbound requests so they don't accumulate forever (CR3)
+        pendingRequestDao.deleteExpired(now)
+
         val identity = identityDao.getIdentity() ?: return
         val myPk = identity.publicKey
         val myName = profileDao.getByPublicKey(myPk)?.displayName ?: (myPk.take(12) + "...")
