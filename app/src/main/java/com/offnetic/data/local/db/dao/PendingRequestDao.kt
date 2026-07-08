@@ -30,6 +30,9 @@ interface PendingRequestDao {
     @Query("DELETE FROM pending_request WHERE expiresAt < :now")
     suspend fun deleteExpired(now: Long)
 
+    @Query("DELETE FROM pending_request WHERE expiresAt < :now AND direction = 'INBOUND'")
+    suspend fun deleteExpiredInbound(now: Long)
+
     @Query("DELETE FROM pending_request")
     suspend fun clear()
 }

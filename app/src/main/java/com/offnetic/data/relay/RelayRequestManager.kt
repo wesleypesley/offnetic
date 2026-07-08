@@ -86,7 +86,7 @@ class RelayRequestManager @Inject constructor(
     suspend fun republishOutbound() {
         val now = System.currentTimeMillis()
         // Prune expired inbound requests so they don't accumulate forever (CR3)
-        pendingRequestDao.deleteExpired(now)
+        pendingRequestDao.deleteExpiredInbound(now)
 
         val identity = identityDao.getIdentity() ?: return
         val myPk = identity.publicKey

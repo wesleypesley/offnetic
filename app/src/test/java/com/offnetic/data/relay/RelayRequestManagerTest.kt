@@ -71,6 +71,7 @@ class RelayRequestManagerTest {
     @Test
     fun `accept adds the contact, sends a bundle, and marks accepted`() = runBlocking {
         coEvery { signal.buildPreKeyBundleBytes() } returns "my-bundle".toByteArray()
+        coEvery { controlSender.sendBundle(any(), any()) } returns true
 
         manager.acceptRequest(aliceNpub)
 
@@ -134,6 +135,7 @@ class RelayRequestManagerTest {
     @Test
     fun `accept processes the stored peer bundle`() = runBlocking {
         coEvery { signal.buildPreKeyBundleBytes() } returns "my-bundle".toByteArray()
+        coEvery { controlSender.sendBundle(any(), any()) } returns true
         coEvery { signal.processBundleAndCreateSession(any(), any(), any()) } returns Unit
         pending.upsert(
             PendingRequestEntity(
