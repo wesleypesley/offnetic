@@ -63,7 +63,6 @@ class NcapManagerImpl @Inject constructor(
     private val messageNotificationManager: MessageNotificationManager,
     private val signalProtocolManager: SignalProtocolManager,
     private val messageDao: MessageDao,
-    private val wifiP2pHandler: WifiP2pHandler,
     @ApplicationContext private val context: Context
 ) : NcapManager {
 
@@ -148,7 +147,7 @@ class NcapManagerImpl @Inject constructor(
                 kotlinx.coroutines.delay(500L)
                 try {
                     val publicKey = endpointPeers[endpointId]?.publicKey ?: return@launch
-                    handleIncomingFileInternal(endpointId, publicKey, payload)
+                    handleIncomingFileInternal(publicKey, payload)
                 } finally {
                     deferredFilePayloads.remove(payloadId)
                 }
@@ -501,7 +500,7 @@ class NcapManagerImpl @Inject constructor(
         android.util.Log.e("NcapConn", "acceptConnection ← ${publicKey.take(12)}...")
         endpointPublicKeys[endpointId] = publicKey
 
-        val callback = createPayloadCallback(endpointId, publicKey)
+        val callback = createPayloadCallback(publicKey)
         endpointPayloadCallbacks[endpointId] = callback
 
         connectionsClient.acceptConnection(endpointId, callback)
@@ -697,7 +696,7 @@ class NcapManagerImpl @Inject constructor(
         }
     }
 
-    private fun createPayloadCallback(endpointId: String, publicKey: String): PayloadCallback {
+    private fun createPayloadCallback(publicKey: String): PayloadCallback {
         return object : PayloadCallback() {
             override fun onPayloadReceived(endpointId: String, payload: Payload) {
                 if (payload.type == Payload.Type.FILE) {
@@ -783,7 +782,7 @@ class NcapManagerImpl @Inject constructor(
             try {
                 val json = org.json.JSONObject(String(bytes, Charsets.UTF_8))
                 if (json.optString("type", "") == "wifi_p2p") {
-                    wifiP2pHandler.onP2pPayload(senderPublicKey, endpointId, json)
+                    android.util.Log.e("NcapFile", "wifi_p2p payload received — deprecated, ignoring")
                 } else {
                     android.util.Log.e("NcapFile", "raw JSON not wifi_p2p either — DROPPING payload")
                 }
@@ -1147,10 +1146,10 @@ class NcapManagerImpl @Inject constructor(
             processedFilePayloads.remove(payload.id)
             return
         }
-        handleIncomingFileInternal(endpointId, senderPublicKey, payload)
+        handleIncomingFileInternal(senderPublicKey, payload)
     }
 
-    private suspend fun handleIncomingFileInternal(endpointId: String, senderPublicKey: String, payload: Payload) {
+    private suspend fun handleIncomingFileInternal(senderPublicKey: String, payload: Payload) {
         val filePayload = payload.asFile() ?: run {
             android.util.Log.e("NcapFile", "handleIncomingFile: payload.asFile() is null for ${senderPublicKey.take(8)}")
             return
@@ -1175,6 +1174,7 @@ class NcapManagerImpl @Inject constructor(
                     copiedOk = tmpFile.length() > 0 && (metaFileSize == 0L || tmpFile.length() >= metaFileSize * 0.95)
                 }
                 if (!copiedOk) {
+                    @Suppress("DEPRECATION")
                     val javaFile = filePayload.asJavaFile()
                     if (javaFile != null && javaFile.exists() && javaFile.length() > 0) {
                         if (!javaFile.renameTo(tmpFile)) {

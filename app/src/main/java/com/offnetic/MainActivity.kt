@@ -25,8 +25,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         try {
-            val testAddress = org.signal.libsignal.protocol.SignalProtocolAddress("smoke_test", 1)
-            android.util.Log.d("OffneticSecurity", "\uD83D\uDE80 CRITICAL SUCCESS: libsignal classes resolved perfectly on this device!")
+            org.signal.libsignal.protocol.SignalProtocolAddress("smoke_test", 1)
+            android.util.Log.d("OffneticSecurity", "libsignal classes resolved on this device")
         } catch (e: Throwable) {
             android.util.Log.e("OffneticSecurity", "\u274C RUNTIME CRASH: Failed to resolve desugared libsignal classes!", e)
         }

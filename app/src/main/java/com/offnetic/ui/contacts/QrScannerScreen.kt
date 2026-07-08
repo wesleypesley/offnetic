@@ -361,7 +361,7 @@ private fun ViewfinderOverlay(scanLineProgress: Float) {
         val vfH = vfW
         val vfX = (size.width - vfW) / 2
         val vfY = (size.height - vfH) / 2
-        val vfRect = androidx.compose.ui.geometry.Rect(vfX, vfY, vfX + vfW, vfY + vfH)
+        androidx.compose.ui.geometry.Rect(vfX, vfY, vfX + vfW, vfY + vfH)
         val cornerLen = 40f
         val cornerStroke = 4f
         val white = Color.White

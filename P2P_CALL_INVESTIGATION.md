@@ -24,7 +24,7 @@ Enable peer-to-peer voice/video calls over Wi-Fi Direct so devices can call each
 
 ## Method 2: Manual `WifiP2pManager` API
 
-**Status:** ⚠️ `createGroup()` works, `connect()` reports ERROR but invitation IS delivered
+**Status:** ❌ Deleted — code removed, approach abandoned
 
 ### What we tested:
 
@@ -55,11 +55,15 @@ Both Round 11 and Round 12 code treat `connect()` returning ERROR as a hard fail
 
 The fix: call `connect()` once, ignore the result, and wait for the `WIFI_P2P_CONNECTION_CHANGED_ACTION` broadcast (30-60s for user to tap Accept).
 
-### `enterP2pDiscoveryMode()` is a no-op:
-`WebRtcManager.enterP2pDiscoveryMode()` was added in Round 11 as an empty stub with the comment "NCAPI P2P_CLUSTER handles Wi-Fi Direct automatically." `WifiP2pHandler.startP2pCall()` is fully implemented but **never called** from the call flow. The Wi-Fi Direct code is dead code — it was never wired into the call path across any commit.
+### Why it was deleted:
+`WifiP2pHandler.kt` (390 lines) was fully implemented with `startP2pCall()`, `startAsGroupOwner()`, `connectToGroupOwner()`, broadcast receiver, and discovery retry loop — but **`startP2pCall()` was never wired into the WebRTC call path**. The code compiled but was dead. `enterP2pDiscoveryMode()` in WebRtcManager was an empty stub. `hasWifiP2pPermission()` also removed (zero callers). The `WifiP2pManager.connect()` API proved too unreliable due to the dialog requirement and `setDialogListener` removal. Cleaned up 2026-07-08:
+- Deleted: `WifiP2pHandler.kt` (390 lines)
+- Cleaned: `NcapManagerImpl.kt` (ctor param + `onP2pPayload` call)
+- Cleaned: `WebRtcManager.kt` (ctor param + `teardown()`/`destroy()` calls + `hasWifiP2pPermission` + 4 unused imports)
+- Cleaned: `NearbyModule.kt`, `WebRtcModule.kt` (DI wiring)
 
-### Code location:
-`WifiP2pHandler.kt` — fully implemented with `startP2pCall()`, `startAsGroupOwner()`, `connectToGroupOwner()`, discovery retry loop. **Preserved but uncalled** from the WebRTC call path.
+### What still works:
+`injectP2pCandidate()` in WebRtcManager (line 974) remains active — it passively scans for a `p2p0` interface with `192.168.49.x` IP and injects synthetic ICE candidates. This means calls still benefit from Wi-Fi Direct when a group already exists (Method 5), just without automatic group creation.
 
 ---
 
@@ -240,7 +244,7 @@ These bugs were found and fixed during P2P call investigation:
 | Method | Auto? | Video? | Works? | User Friction |
 |---|---|---|---|---|
 | NCAPI Stream (WalkieTalkie) | Yes | No | Untested | None (audio-only) |
-| Manual `WifiP2pManager` API | No | Yes | Dialog + code bugs | P2P dialog every time |
+| Manual `WifiP2pManager` API | N/A | N/A | ❌ Deleted | N/A |
 | Wi-Fi Aware (NAN) | Yes | Yes | Hardware ❌ | N/A |
 | Local-Only Hotspot | No | Yes | Client connection ❌ | N/A |
 | Manual P2P Group (Settings) | No | Yes | ✅ | 8 steps, 2 phones |

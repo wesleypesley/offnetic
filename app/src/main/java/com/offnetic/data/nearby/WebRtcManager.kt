@@ -2,11 +2,7 @@ package com.offnetic.data.nearby
 
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.wifi.WifiManager
-import android.os.Build
-import android.provider.Settings
-import androidx.core.content.ContextCompat
 import com.offnetic.data.crypto.NcapEnvelope
 import com.offnetic.data.local.db.dao.ContactDao
 import com.offnetic.data.network.NetworkMonitor
@@ -56,7 +52,6 @@ enum class CallTransport { NCAPI, RELAY }
 class WebRtcManager(
     private val context: Context,
     private val ncapManager: NcapManager,
-    private val wifiP2pHandler: WifiP2pHandler,
     private val contactDao: ContactDao,
     private val relayControlSender: RelayControlSender,
     private val networkMonitor: NetworkMonitor
@@ -101,23 +96,6 @@ class WebRtcManager(
         // indefinitely from malicious or abandoned calls (Issue #11).
         val pendingIncomingOffers = ConcurrentHashMap<String, Pair<String, String>>()
 
-        fun hasWifiP2pPermission(context: Context): Boolean {
-            val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                android.Manifest.permission.NEARBY_WIFI_DEVICES
-            } else {
-                android.Manifest.permission.ACCESS_FINE_LOCATION
-            }
-            if (ContextCompat.checkSelfPermission(context, permission) != PackageManager.PERMISSION_GRANTED) {
-                return false
-            }
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-                try {
-                    val locationMode = Settings.Secure.getInt(context.contentResolver, Settings.Secure.LOCATION_MODE)
-                    if (locationMode == Settings.Secure.LOCATION_MODE_OFF) return false
-                } catch (_: Settings.SettingNotFoundException) {}
-            }
-            return true
-        }
     }
 
     private fun wifiEnabled(): Boolean =
@@ -259,21 +237,21 @@ class WebRtcManager(
                     pc.setLocalDescription(object : org.webrtc.SdpObserver {
                         override fun onCreateSuccess(p0: SessionDescription?) {}
                         override fun onSetSuccess() {
-                            scope.launch {
+                            scope.launch createOffer@{
                                 when (transport) {
                                     CallTransport.NCAPI -> {
                                         val json = JSONObject().apply {
                                             put("type", sdp.type.canonicalForm())
                                             put("sdp", sdp.description)
                                         }
-                                        applyCachedAnswer(pc, peerPublicKey, endpointId, state)
+                                        applyCachedAnswer(pc, peerPublicKey, state)
                                         ncapManager.sendCallSignal(
                                             endpointId,
                                             NcapEnvelope.PayloadType.CALL_OFFER,
                                             json.toString().toByteArray(Charsets.UTF_8)
                                         )
                                         android.util.Log.e("offCall", "CALL_OFFER sent to $endpointId")
-                                        injectP2pCandidate(peerPublicKey, endpointId, sdp.description)
+                                        injectP2pCandidate(endpointId, sdp.description)
                                     }
                                     CallTransport.RELAY -> {
                                         // Non-trickle: wait for full ICE gather (up to 8s) then send complete SDP
@@ -292,7 +270,7 @@ class WebRtcManager(
                                         if (!sent) {
                                             state.update { it.copy(phase = CallPhase.ENDED, error = "Couldn't reach relay") }
                                             cleanupPeerConnection(peerPublicKey)
-                                            return@launch
+                                            return@createOffer
                                         }
                                         android.util.Log.e("offCall", "CALL_OFFER sent via relay to ${contact.nostrPublicKey!!.take(8)}")
                                     }
@@ -370,7 +348,7 @@ class WebRtcManager(
                 pc.setRemoteDescription(object : org.webrtc.SdpObserver {
                     override fun onCreateSuccess(p0: SessionDescription?) {}
                     override fun onSetSuccess() {
-                        createAndSendAnswer(pc, peerPublicKey, endpointId, isVideo, constraints, state, transport)
+                        createAndSendAnswer(pc, peerPublicKey, endpointId, constraints, state, transport)
                     }
                     override fun onCreateFailure(p0: String?) {}
                     override fun onSetFailure(err: String) {
@@ -424,7 +402,6 @@ class WebRtcManager(
     private fun applyCachedAnswer(
         pc: PeerConnection,
         peerPublicKey: String,
-        endpointId: String,
         state: MutableStateFlow<CallState>
     ) {
         val cachedAnswer = pendingSdpAnswers.remove(peerPublicKey) ?: return
@@ -446,7 +423,6 @@ class WebRtcManager(
         pc: PeerConnection,
         peerPublicKey: String,
         endpointId: String,
-        isVideo: Boolean,
         constraints: MediaConstraints,
         state: MutableStateFlow<CallState>,
         transport: CallTransport = CallTransport.NCAPI
@@ -469,9 +445,9 @@ class WebRtcManager(
                                         json.toString().toByteArray(Charsets.UTF_8)
                                     )
                                     android.util.Log.e("offCall", "CALL_ANSWER sent to $endpointId")
-                                    injectP2pCandidate(peerPublicKey, endpointId, sdp.description)
+                                    injectP2pCandidate(endpointId, sdp.description)
                                     state.update { it.copy(phase = CallPhase.CONNECTING) }
-                                    iceCandidateCache[peerPublicKey]?.forEach { sendIceCandidate(endpointId, peerPublicKey, it) }
+                                    iceCandidateCache[peerPublicKey]?.forEach { sendIceCandidate(endpointId, it) }
                                     iceCandidateCache.remove(peerPublicKey)
                                 }
                                 CallTransport.RELAY -> {
@@ -602,7 +578,6 @@ class WebRtcManager(
         Timber.d("onCallHangup: remote hangup for ${peerPublicKey.take(8)}")
         val state = getCallState(peerPublicKey)
         state.update { it.copy(phase = CallPhase.ENDED) }
-        wifiP2pHandler.teardown()
         cleanupPeerConnection(peerPublicKey)
     }
 
@@ -629,7 +604,6 @@ class WebRtcManager(
         }
         val state = getCallState(peerPublicKey)
         state.update { it.copy(phase = CallPhase.ENDED) }
-        wifiP2pHandler.teardown()
         cleanupPeerConnection(peerPublicKey)
     }
 
@@ -683,10 +657,6 @@ class WebRtcManager(
         val isCameraOn = !state.value.isCameraOn
         state.update { it.copy(isCameraOn = isCameraOn) }
         localVideoTracks[peerPublicKey]?.setEnabled(isCameraOn)
-    }
-
-    fun enterP2pDiscoveryMode(peerPublicKey: String) {
-        // NCAPI P2P_CLUSTER handles Wi-Fi Direct automatically
     }
 
     fun setCameraEnabled(peerPublicKey: String, enabled: Boolean) {
@@ -828,7 +798,7 @@ class WebRtcManager(
 
     private fun createVideoCapturer(): VideoCapturer? {
         val handler = object : CameraVideoCapturer.CameraEventsHandler {
-            override fun onCameraError(error: String) { scope.launch { fallbackToCamera1(error) } }
+            override fun onCameraError(error: String) { scope.launch { fallbackToCamera1() } }
             override fun onCameraDisconnected() { onCameraError("disconnected") }
             override fun onCameraFreezed(error: String) { onCameraError("freezed: $error") }
             override fun onCameraOpening(cameraName: String) {}
@@ -850,7 +820,7 @@ class WebRtcManager(
     private var activeSurfaceTextureHelper: SurfaceTextureHelper? = null
     private var activeVideoSource: VideoSource? = null
 
-    private fun fallbackToCamera1(error: String) {
+    private fun fallbackToCamera1() {
         val peerKey = activeVideoPeer ?: return
         val stHelper = activeSurfaceTextureHelper ?: return
         val vSource = activeVideoSource ?: return
@@ -984,14 +954,14 @@ class WebRtcManager(
         ncapManager.sendCallSignal(endpointId, NcapEnvelope.PayloadType.ICE_CANDIDATE, json.toString().toByteArray(Charsets.UTF_8))
     }
 
-    private suspend fun sendIceCandidate(endpointId: String, peerPublicKey: String, candidate: IceCandidate) {
+    private suspend fun sendIceCandidate(endpointId: String, candidate: IceCandidate) {
         val json = JSONObject().apply {
             put("sdp", candidate.sdp); put("sdpMid", candidate.sdpMid); put("sdpMLineIndex", candidate.sdpMLineIndex)
         }
         ncapManager.sendCallSignal(endpointId, NcapEnvelope.PayloadType.ICE_CANDIDATE, json.toString().toByteArray(Charsets.UTF_8))
     }
 
-    private suspend fun injectP2pCandidate(peerPublicKey: String, endpointId: String, localSdp: String) {
+    private suspend fun injectP2pCandidate(endpointId: String, localSdp: String) {
         val p2pIp = try {
             java.net.NetworkInterface.getNetworkInterfaces()?.asSequence()
                 ?.find { it.displayName == "p2p0" }
@@ -1072,7 +1042,6 @@ class WebRtcManager(
         localProxies.clear()
         remoteProxies.clear()
         rendererTracks.clear()
-        wifiP2pHandler.destroy()
         peerConnectionFactory?.dispose()
         eglBase?.release()
         initialized = false

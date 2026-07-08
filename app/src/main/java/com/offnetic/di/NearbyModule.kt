@@ -11,7 +11,6 @@ import com.offnetic.data.local.db.dao.ProfileDao
 import com.offnetic.data.local.datastore.PreferencesRepository
 import com.offnetic.data.nearby.NcapManager
 import com.offnetic.data.nearby.NcapManagerImpl
-import com.offnetic.data.nearby.WifiP2pHandler
 import com.offnetic.util.ProximityPingNotifier
 import com.offnetic.util.MessageNotificationManager
 import dagger.Module
@@ -42,7 +41,6 @@ object NearbyModule {
         messageNotificationManager: MessageNotificationManager,
         signalProtocolManager: SignalProtocolManager,
         messageDao: MessageDao,
-        wifiP2pHandler: WifiP2pHandler,
         @dagger.hilt.android.qualifiers.ApplicationContext context: Context
     ): NcapManager = NcapManagerImpl(
         connectionsClient,
@@ -54,7 +52,6 @@ object NearbyModule {
         messageNotificationManager,
         signalProtocolManager,
         messageDao,
-        wifiP2pHandler,
         context
     )
 }

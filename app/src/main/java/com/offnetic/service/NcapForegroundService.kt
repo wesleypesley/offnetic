@@ -239,13 +239,13 @@ class NcapForegroundService : Service() {
     }
 
     private fun buildNotification(text: String): Notification {
+        val action = Notification.Action.Builder(null, "Shutdown", shutdownIntent).build()
         return Notification.Builder(this, CHANNEL_ID)
             .setContentTitle("Offnetic")
             .setContentText(text)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .addAction(0, "Shutdown", shutdownIntent)
+            .addAction(action)
             .setOngoing(true)
-            .setPriority(Notification.PRIORITY_LOW)
             .build()
     }
 

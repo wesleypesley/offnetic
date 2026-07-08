@@ -123,13 +123,13 @@ class RelayOutboxProcessorTest {
     }
 
     @Test
-    fun `row for contact without a nostr key is marked FAILED`() = runBlocking {
+    fun `row for contact without a nostr key is skipped not failed`() = runBlocking {
         outbox.upsert(row("m1", "peer-no-nostr", System.currentTimeMillis() + 86_400_000))
 
         processor.processPending()
 
         assertEquals(0, fake.sent.size)
-        assertEquals(RelayOutboxState.FAILED, outbox.getByUuid("m1")!!.state)
+        assertEquals(RelayOutboxState.PENDING, outbox.getByUuid("m1")!!.state)
     }
 
     @Test

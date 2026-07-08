@@ -370,7 +370,7 @@ class CallActivity : ComponentActivity() {
         callActive = true
         incomingButtons.visibility = View.GONE
         controlPanel.visibility = View.VISIBLE
-        statusTv.text = "Connecting..."
+        statusTv.text = getString(R.string.call_connecting)
     }
 
     private fun hangup() {

@@ -83,7 +83,6 @@ class CallViewModel @AssistedInject constructor(
         internalScope.launch {
             webRtcManager.initialize()
             observeCallSignals()
-            webRtcManager.enterP2pDiscoveryMode(peerPublicKey)
             callStateFlow.update { it.copy(
                 phase = CallPhase.INCOMING, isVideo = true
             ) }

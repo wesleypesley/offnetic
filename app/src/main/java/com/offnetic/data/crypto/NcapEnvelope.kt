@@ -88,7 +88,7 @@ sealed class NcapEnvelope {
         fun parse(bytes: ByteArray): NcapEnvelope? {
             return try {
                 val json = JSONObject(String(bytes, Charsets.UTF_8))
-                when (json.optString("fmt", null)) {
+                when (json.optString("fmt", "")) {
                     "sealed" -> SealedSender.fromBytes(bytes)
                     else -> Plain.fromBytes(bytes)
                 }

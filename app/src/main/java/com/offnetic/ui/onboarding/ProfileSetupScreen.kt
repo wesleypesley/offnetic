@@ -14,8 +14,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -113,13 +113,14 @@ fun ProfileSetupScreen(
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(14.dp),
-                colors = TextFieldDefaults.outlinedTextFieldColors(
+                colors = OutlinedTextFieldDefaults.colors(
                     focusedTextColor = Color.White,
                     unfocusedTextColor = Color.White,
                     cursorColor = Color.White,
                     focusedBorderColor = if (showError) Color(0xFFEF4444) else Color(0x40FFFFFF),
                     unfocusedBorderColor = if (showError) Color(0xFFEF4444) else Color(0x1AFFFFFF),
-                    containerColor = Color(0x0DFFFFFF)
+                    focusedContainerColor = Color(0x0DFFFFFF),
+                    unfocusedContainerColor = Color(0x0DFFFFFF)
                 ),
                 textStyle = MaterialTheme.typography.bodyLarge,
                 supportingText = {

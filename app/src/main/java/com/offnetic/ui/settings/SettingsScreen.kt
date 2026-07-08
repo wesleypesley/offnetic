@@ -33,8 +33,7 @@ import com.offnetic.ui.theme.Spacing
 
 @Composable
 fun SettingsScreen(
-    onBack: () -> Unit = {},
-    viewModel: SettingsViewModel = hiltViewModel()
+    onBack: () -> Unit = {}
 ) {
     Scaffold(
         modifier = Modifier.fillMaxSize(),

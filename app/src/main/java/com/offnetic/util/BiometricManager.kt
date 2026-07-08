@@ -31,7 +31,7 @@ class BiometricManager @Inject constructor(
             .setDescription(description)
             .setNegativeButtonText(negativeButtonText)
             .setConfirmationRequired(false)
-            .setDeviceCredentialAllowed(false)
+            .setAllowedAuthenticators(androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG)
             .build()
 
         val callback = object : BiometricPrompt.AuthenticationCallback() {

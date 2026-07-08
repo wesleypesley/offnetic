@@ -54,7 +54,6 @@ fun ChatListScreen(
     onChatClick: (String) -> Unit = {},
     onScanQr: () -> Unit = {},
     onRequests: () -> Unit = {},
-    onNearbyClick: () -> Unit = {},
     onShutdown: () -> Unit = {},
     viewModel: ChatListViewModel = hiltViewModel()
 ) {
@@ -96,7 +95,6 @@ fun ChatListContent(
                 onShutdown = onShutdown,
                 onShowProfile = { showProfileDialog = true },
                 isDiscovering = true,
-                profileDisplayName = profileDisplayName,
                 pendingRequestCount = pendingRequestCount
             )
 
@@ -180,7 +178,6 @@ private fun Header(
     onShutdown: () -> Unit = {},
     onShowProfile: () -> Unit = {},
     isDiscovering: Boolean,
-    profileDisplayName: String = "",
     pendingRequestCount: Int = 0
 ) {
     Column(

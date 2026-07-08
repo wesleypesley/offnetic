@@ -145,12 +145,12 @@ fun OffneticNavHost() {
         }
     ) {
         composable(Routes.SPLASH) {
-            val splashViewModel: SplashViewModel = hiltViewModel()
-            val hasIdentity by splashViewModel.hasIdentity.collectAsState()
+            val svm: SplashViewModel = hiltViewModel()
+            val hasId by svm.hasIdentity.collectAsState()
 
             SplashScreen(
                 onDone = {
-                    if (hasIdentity) {
+                    if (hasId) {
                         navController.navigate(Routes.MAIN) {
                             popUpTo(Routes.SPLASH) { inclusive = true }
                         }
@@ -211,9 +211,9 @@ fun OffneticNavHost() {
         }
 
         composable(Routes.MAIN) {
-            val context = LocalContext.current
+            val ctx = LocalContext.current
             LaunchedEffect(Unit) {
-                context.startForegroundService(Intent(context, NcapForegroundService::class.java))
+                ctx.startForegroundService(Intent(ctx, NcapForegroundService::class.java))
             }
             MainScreen(navController)
         }
@@ -257,17 +257,16 @@ fun OffneticNavHost() {
         }
 
         composable(Routes.CHAT_LIST) {
-            val context = LocalContext.current
-            val activity = context as? android.app.Activity
+            val ctx = LocalContext.current
+            val activity = ctx as? android.app.Activity
             ChatListScreen(
                 onChatClick = { contactPublicKey ->
                     navController.navigate(Routes.chatRoute(contactPublicKey))
                 },
                 onScanQr = { navController.navigate(Routes.QR_SCANNER) },
                 onRequests = { navController.navigate(Routes.REQUESTS) },
-                onNearbyClick = { navController.popBackStack() },
                 onShutdown = {
-                    context.stopService(Intent(context, NcapForegroundService::class.java))
+                    ctx.stopService(Intent(ctx, NcapForegroundService::class.java))
                     activity?.finish()
                 }
             )
@@ -277,11 +276,11 @@ fun OffneticNavHost() {
             route = Routes.CHAT,
             arguments = listOf(navArgument("contactPublicKey") { type = NavType.StringType })
         ) {
-            val context = LocalContext.current
+            val ctx = LocalContext.current
             ChatScreen(
                 onBack = { navController.popBackStack() },
                 onCall = { peerKey ->
-                    val intent = Intent(context, CallActivity::class.java).apply {
+                    val intent = Intent(ctx, CallActivity::class.java).apply {
                         putExtra("EXTRA_PEER_PUBLIC_KEY", URLEncoder.encode(peerKey, "UTF-8"))
                         putExtra("EXTRA_IS_INCOMING", false)
                     }

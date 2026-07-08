@@ -4,7 +4,6 @@ import android.content.Context
 import com.offnetic.data.local.db.dao.ContactDao
 import com.offnetic.data.nearby.NcapManager
 import com.offnetic.data.nearby.WebRtcManager
-import com.offnetic.data.nearby.WifiP2pHandler
 import com.offnetic.data.network.NetworkMonitor
 import com.offnetic.data.relay.RelayControlSender
 import dagger.Module
@@ -23,11 +22,10 @@ object WebRtcModule {
     fun provideWebRtcManager(
         @ApplicationContext context: Context,
         ncapManager: NcapManager,
-        wifiP2pHandler: WifiP2pHandler,
         contactDao: ContactDao,
         relayControlSender: RelayControlSender,
         networkMonitor: NetworkMonitor
     ): WebRtcManager {
-        return WebRtcManager(context, ncapManager, wifiP2pHandler, contactDao, relayControlSender, networkMonitor)
+        return WebRtcManager(context, ncapManager, contactDao, relayControlSender, networkMonitor)
     }
 }

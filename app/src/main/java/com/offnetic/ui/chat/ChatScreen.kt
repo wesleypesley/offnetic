@@ -48,10 +48,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.ui.res.painterResource
 import com.offnetic.R
 import androidx.compose.runtime.Composable
@@ -328,13 +328,14 @@ private fun InputBar(
                 },
                 maxLines = 4,
                 shape = RoundedCornerShape(20.dp),
-                colors = TextFieldDefaults.outlinedTextFieldColors(
+                colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = Color(0x40FFFFFF),
                     unfocusedBorderColor = Color(0x1AFFFFFF),
                     focusedTextColor = Color.White,
                     unfocusedTextColor = Color.White,
                     cursorColor = Color.White,
-                    containerColor = Color(0x0DFFFFFF)
+                    focusedContainerColor = Color(0x0DFFFFFF),
+                    unfocusedContainerColor = Color(0x0DFFFFFF)
                 )
             )
             Spacer(modifier = Modifier.width(Spacing.xs))
@@ -396,7 +397,6 @@ private fun MessageBubble(
                 Column(modifier = Modifier.padding(horizontal = Spacing.md, vertical = Spacing.sm)) {
                     when (message.type) {
                         Message.TYPE_CANCELLED -> {
-                            val ctx = LocalContext.current
                             Text(
                                 text = message.content,
                 style = MaterialTheme.typography.bodySmall,

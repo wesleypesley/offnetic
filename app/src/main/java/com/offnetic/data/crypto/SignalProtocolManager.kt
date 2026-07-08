@@ -191,8 +191,7 @@ class SignalProtocolManager @Inject constructor(
     }
 
     suspend fun handleShatteredSession(
-        peerPublicKey: String,
-        deviceId: Int = 1
+        peerPublicKey: String
     ): ByteArray = withContext(Dispatchers.IO) {
         // Build the bundle BEFORE deleting the session so a keygen failure leaves
         // the existing session intact rather than permanently deadlocking decryption.
