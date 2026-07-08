@@ -194,8 +194,11 @@ class SignalProtocolManager @Inject constructor(
         peerPublicKey: String,
         deviceId: Int = 1
     ): ByteArray = withContext(Dispatchers.IO) {
+        // Build the bundle BEFORE deleting the session so a keygen failure leaves
+        // the existing session intact rather than permanently deadlocking decryption.
+        val newBundle = buildPreKeyBundleBytes()
         protocolStore.deleteAllSessions(peerPublicKey)
-        buildPreKeyBundleBytes()
+        newBundle
     }
 
     suspend fun deleteSession(peerPublicKey: String) = withContext(Dispatchers.IO) {

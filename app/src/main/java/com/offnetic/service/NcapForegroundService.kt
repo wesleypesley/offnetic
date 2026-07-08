@@ -52,8 +52,8 @@ class NcapForegroundService : Service() {
     @Inject lateinit var relayStateDao: RelayStateDao
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private var isNcapActive = false
-    private var isRelayActive = false
+    @Volatile private var isNcapActive = false
+    @Volatile private var isRelayActive = false
     private var bluetoothPaused = false
     private var restartJob: kotlinx.coroutines.Job? = null
     private lateinit var pendingIntent: PendingIntent
@@ -127,7 +127,6 @@ class NcapForegroundService : Service() {
         if (intent?.action == "com.offnetic.SHUTDOWN") {
             ncapManager.stopAll()
             stopSelf()
-            android.os.Process.killProcess(android.os.Process.myPid())
             return START_NOT_STICKY
         }
         updateNotification("Listening for contacts")
@@ -195,6 +194,7 @@ class NcapForegroundService : Service() {
                         delay(60_000L)
                         try {
                             val refreshSince = computeSince(relayStateDao.getLastSeen())
+                            relayPool.closeSubscription("offnetic-inbox")
                             relayPool.subscribe("offnetic-inbox", RelayFilter(kinds = listOf(GiftWrap.KIND_GIFT_WRAP), pTags = listOf(myNpubHex), since = refreshSince))
                             Timber.d("RelaySvc subscription refreshed since=$refreshSince")
                         } catch (e: Exception) { Timber.e(e, "Subscription refresh failed") }

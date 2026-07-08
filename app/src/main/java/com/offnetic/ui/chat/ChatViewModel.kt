@@ -30,6 +30,7 @@ import com.offnetic.util.MessageNotificationManager
 import com.offnetic.util.media.VoiceNoteRecorder
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -113,7 +114,8 @@ class ChatViewModel @Inject constructor(
     private val _toastMessage = MutableSharedFlow<String>(extraBufferCapacity = 4)
     val toastMessage: SharedFlow<String> = _toastMessage
 
-    private var recordingGuard = false
+    private val recordingGuard = AtomicBoolean(false)
+    private val retryInProgress = AtomicBoolean(false)
 
     fun setActive() {
         activeChatTracker.activeChatKey = contactPublicKey
@@ -254,7 +256,7 @@ class ChatViewModel @Inject constructor(
             val elapsedMs = voiceNoteRecorder.elapsedMs
             viewModelScope.launch {
                 val file = voiceNoteRecorder.stopRecording()
-                recordingGuard = false
+                recordingGuard.set(false)
                 if (file != null && file.exists() && file.length() > 0) {
                     val duration = formatVoiceDuration(elapsedMs)
                     val identity = identityDao.getIdentity()
@@ -312,8 +314,7 @@ class ChatViewModel @Inject constructor(
                 }
             }
         } else {
-            if (recordingGuard) return
-            recordingGuard = true
+            if (!recordingGuard.compareAndSet(false, true)) return
             try {
                 voiceNoteRecorder.startRecording()
                 _isRecording.value = true
@@ -323,11 +324,11 @@ class ChatViewModel @Inject constructor(
                         kotlinx.coroutines.delay(100)
                     }
                     _isRecording.value = false
-                    recordingGuard = false
+                    recordingGuard.set(false)
                 }
             } catch (_: Exception) {
                 _isRecording.value = false
-                recordingGuard = false
+                recordingGuard.set(false)
             }
         }
     }
@@ -454,6 +455,7 @@ class ChatViewModel @Inject constructor(
     }
 
     private fun retryUnsentMessages() {
+        if (!retryInProgress.compareAndSet(false, true)) return
         viewModelScope.launch {
             try {
                 val identity = identityDao.getIdentity()
@@ -513,6 +515,8 @@ class ChatViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 Timber.e(e, "retryUnsentMessages failed")
+            } finally {
+                retryInProgress.set(false)
             }
         }
     }

@@ -64,9 +64,9 @@ class WebRtcManager(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val factoryScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
-    private var eglBase: EglBase? = null
-    private var peerConnectionFactory: PeerConnectionFactory? = null
-    private var initialized = false
+    @Volatile private var eglBase: EglBase? = null
+    @Volatile private var peerConnectionFactory: PeerConnectionFactory? = null
+    @Volatile private var initialized = false
 
     private val peerConnections = ConcurrentHashMap<String, PeerConnection>()
     private val videoSources = ConcurrentHashMap<String, VideoSource>()
@@ -192,14 +192,7 @@ class WebRtcManager(
     }
 
     fun getCallState(peerPublicKey: String): MutableStateFlow<CallState> {
-        return _callStates.getOrPut(peerPublicKey) {
-            MutableStateFlow(CallState())
-        }.also { flow ->
-            if (flow.value.phase == CallPhase.ENDED) {
-                android.util.Log.e("offCall", "getCallState resetting stale ENDED for ${peerPublicKey.take(8)}")
-                flow.value = CallState()
-            }
-        }
+        return _callStates.getOrPut(peerPublicKey) { MutableStateFlow(CallState()) }
     }
 
     fun startCall(peerPublicKey: String, isVideo: Boolean, peerDisplayName: String) {
@@ -210,6 +203,8 @@ class WebRtcManager(
         pendingOfferEndpoints.remove(peerPublicKey)
         pendingSdpAnswers.remove(peerPublicKey)
         val state = getCallState(peerPublicKey)
+        // Reset any stale terminal state from a previous call to the same peer
+        if (state.value.phase == CallPhase.ENDED) state.value = CallState()
         state.update { it.copy(phase = CallPhase.OUTGOING, isVideo = isVideo, peerPublicKey = peerPublicKey, peerDisplayName = peerDisplayName, connectedAt = 0L, error = "") }
 
         scope.launch {
@@ -798,6 +793,7 @@ class WebRtcManager(
         peerConnections[peerPublicKey] = pc
 
         val dcInit = DataChannel.Init().apply { ordered = true }
+        dataChannels.remove(peerPublicKey)?.let { it.close(); it.dispose() }
         val dc = pc.createDataChannel("callControl", dcInit)
         dataChannels[peerPublicKey] = dc
         dc.registerObserver(createDataChannelObserver(peerPublicKey))
@@ -928,6 +924,7 @@ class WebRtcManager(
             override fun onRemoveStream(stream: MediaStream) {}
             override fun onDataChannel(channel: DataChannel) {
                 android.util.Log.e("WebRTC_ICE", "onDataChannel for ${peerPublicKey.take(8)}")
+                dataChannels.remove(peerPublicKey)?.let { it.close(); it.dispose() }
                 dataChannels[peerPublicKey] = channel
                 channel.registerObserver(createDataChannelObserver(peerPublicKey))
             }

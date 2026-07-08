@@ -35,7 +35,10 @@ class RelayOutboxProcessor @Inject constructor(
 
             if (row.state == RelayOutboxState.RELAYED) {
                 if (now - row.lastAttemptAt < REPUBLISH_INTERVAL_MS) continue
-                if (now - row.createdAt >= REPUBLISH_WINDOW_MS) continue
+                if (now - row.createdAt >= REPUBLISH_WINDOW_MS) {
+                    outboxDao.updateState(row.messageUuid, RelayOutboxState.FAILED)
+                    continue
+                }
             } else {
                 if (row.retryCount >= row.maxRetries) {
                     outboxDao.updateState(row.messageUuid, RelayOutboxState.FAILED)
@@ -73,11 +76,22 @@ class RelayOutboxProcessor @Inject constructor(
     }
 
     suspend fun handleAck(ack: OkAck) = mutex.withLock {
+        val uuid = pendingAcks[ack.eventId] ?: return@withLock
         if (ack.accepted) {
-            pendingAcks.remove(ack.eventId)?.let { uuid ->
-                outboxDao.updateState(uuid, RelayOutboxState.ACKNOWLEDGED)
-                outboxDao.pruneAcknowledged()
-                Timber.d("Outbox ack uuid=${uuid.take(8)} event=${ack.eventId.take(8)} relay=${ack.relayUrl}")
+            pendingAcks.remove(ack.eventId)
+            outboxDao.updateState(uuid, RelayOutboxState.ACKNOWLEDGED)
+            outboxDao.pruneAcknowledged()
+            Timber.d("Outbox ack uuid=${uuid.take(8)} event=${ack.eventId.take(8)} relay=${ack.relayUrl}")
+        } else {
+            // Relay explicitly rejected the event — bump retry count so backoff applies.
+            // Don't remove from pendingAcks yet; other relays may still accept.
+            Timber.w("Outbox rejected uuid=${uuid.take(8)} event=${ack.eventId.take(8)} relay=${ack.relayUrl}")
+            val row = outboxDao.getByUuid(uuid) ?: return@withLock
+            if (row.retryCount + 1 >= row.maxRetries) {
+                pendingAcks.remove(ack.eventId)
+                outboxDao.updateState(uuid, RelayOutboxState.FAILED)
+            } else {
+                outboxDao.upsert(row.copy(retryCount = row.retryCount + 1, lastAttemptAt = System.currentTimeMillis()))
             }
         }
     }

@@ -305,7 +305,9 @@ class NcapManagerImpl @Inject constructor(
             Timber.d("Disconnected: $endpointId")
             heartbeatJobs.remove(endpointId)?.cancel()
             endpointPayloadCallbacks.remove(endpointId)
-            endpointPublicKeys.remove(endpointId)
+            val disconnectedKey = endpointPublicKeys.remove(endpointId)
+                ?: endpointPeers[endpointId]?.publicKey
+            if (disconnectedKey != null) identitySentPeers.remove(disconnectedKey)
             updatePeerState(endpointId, ConnectionState.DISCONNECTED)
 
             scope.launch {
@@ -421,10 +423,13 @@ class NcapManagerImpl @Inject constructor(
         try { connectionsClient.stopAllEndpoints() } catch (_: Exception) {}
         stopAdvertising()
         stopDiscovery()
+        heartbeatJobs.values.forEach { it.cancel() }
+        heartbeatJobs.clear()
         endpointPayloadCallbacks.clear()
         endpointPublicKeys.clear()
         decryptFailureCounts.clear()
         deferredFilePayloads.clear()
+        identitySentPeers.clear()
         _nearbyState.value = NearbyState.Idle
     }
 
