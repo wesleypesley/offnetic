@@ -15,7 +15,7 @@ interface RelayOutboxDao {
     @Query("SELECT * FROM relay_outbox WHERE messageUuid = :messageUuid")
     suspend fun getByUuid(messageUuid: String): RelayOutboxEntity?
 
-    @Query("SELECT * FROM relay_outbox WHERE state IN ('PENDING', 'RELAYED') ORDER BY createdAt ASC")
+    @Query("SELECT * FROM relay_outbox WHERE state IN ('PENDING', 'RELAYED') ORDER BY createdAt ASC LIMIT 100")
     suspend fun getActive(): List<RelayOutboxEntity>
 
     @Query("SELECT COUNT(*) FROM relay_outbox WHERE chatId = :chatId")

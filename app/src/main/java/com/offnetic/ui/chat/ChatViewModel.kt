@@ -122,9 +122,7 @@ class ChatViewModel @Inject constructor(
         messageNotificationManager.dismissForContact(contactPublicKey)
     }
     fun clearActive() {
-        if (activeChatTracker.activeChatKey == contactPublicKey) {
-            activeChatTracker.activeChatKey = null
-        }
+        activeChatTracker.clearIfActive(contactPublicKey)
     }
 
     val messages: StateFlow<List<com.offnetic.domain.model.Message>> = messageDao.getMessagesForChat(contactPublicKey, 100, 0)
@@ -349,7 +347,7 @@ class ChatViewModel @Inject constructor(
         }
     }
 
-    private var connectingToastShown = false
+    private val connectingToastShown = AtomicBoolean(false)
 
     private fun sendEncrypted(plaintext: ByteArray, type: Int, content: String) {
         Timber.d("sendEncrypted: type=$type, size=${plaintext.size}, peer=${contactPublicKey.take(8)}...")
@@ -394,8 +392,7 @@ class ChatViewModel @Inject constructor(
                         )
                         relayControlSender.sendConnectionRequest(nostrPub, myPublicKey, myName, bundle)
                         Timber.d("sendEncrypted: uuid=${entity.messageUuid.take(8)} no session — sent connection request + tracked outbound")
-                        if (!connectingToastShown) {
-                            connectingToastShown = true
+                        if (connectingToastShown.compareAndSet(false, true)) {
                             _toastMessage.emit("${_contactName.value} not nearby — connecting over the internet")
                         }
                     } else {

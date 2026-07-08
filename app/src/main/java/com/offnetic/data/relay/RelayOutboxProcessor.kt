@@ -47,11 +47,9 @@ class RelayOutboxProcessor @Inject constructor(
                 if (now - row.lastAttemptAt < backoffMs(row.retryCount)) continue
             }
 
-            val recipientPub = recipientPubkey(row.chatId)
-            if (recipientPub == null) {
-                outboxDao.updateState(row.messageUuid, RelayOutboxState.FAILED)
-                continue
-            }
+            // Skip rows whose contact has no nostrPublicKey yet — this is transient
+            // (contact not yet fully set up) and will resolve on the next pass.
+            val recipientPub = recipientPubkey(row.chatId) ?: continue
 
             val giftWrap = GiftWrap.wrap(
                 senderPriv = myPriv,

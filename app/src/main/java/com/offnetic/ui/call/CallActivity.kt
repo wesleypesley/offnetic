@@ -73,7 +73,7 @@ class CallActivity : ComponentActivity() {
         if (granted) {
             enableCamera()
         } else {
-            Toast.makeText(this, "Camera permission required", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.call_camera_permission_required), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -88,7 +88,7 @@ class CallActivity : ComponentActivity() {
         android.util.Log.e("offCall", "onCreate peer=${peerPublicKey.take(8)} incoming=$isIncoming")
 
         if (peerPublicKey.isEmpty()) {
-            Toast.makeText(this, "Invalid call data", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.call_invalid_data), Toast.LENGTH_SHORT).show()
             finish()
             return
         }
@@ -220,12 +220,12 @@ class CallActivity : ComponentActivity() {
 
             if (isIncoming) {
                 callViewModel.acceptIncomingCall(peerPublicKey, displayName)
-                statusTv.text = "Incoming call"
+                statusTv.text = getString(R.string.call_incoming)
                 incomingButtons.visibility = View.VISIBLE
                 controlPanel.visibility = View.GONE
             } else {
                 callViewModel.startOutgoingCall(peerPublicKey, displayName)
-                statusTv.text = "Calling..."
+                statusTv.text = getString(R.string.call_calling)
                 incomingButtons.visibility = View.GONE
                 controlPanel.visibility = View.VISIBLE
             }
@@ -267,13 +267,13 @@ class CallActivity : ComponentActivity() {
                 finishRunnable?.let { fullscreenRenderer.removeCallbacks(it) }
                 finishRunnable = null
                 finished = false
-                statusTv.text = "Calling..."
+                statusTv.text = getString(R.string.call_calling)
             }
             CallPhase.CONNECTING -> {
                 finishRunnable?.let { fullscreenRenderer.removeCallbacks(it) }
                 finishRunnable = null
                 finished = false
-                statusTv.text = "Connecting..."
+                statusTv.text = getString(R.string.call_connecting)
             }
             CallPhase.INCOMING -> {
                 finishRunnable?.let { fullscreenRenderer.removeCallbacks(it) }
@@ -302,7 +302,7 @@ class CallActivity : ComponentActivity() {
                 }
             }
             CallPhase.ENDED -> {
-                statusTv.text = state.error ?: "Call ended"
+                statusTv.text = state.error ?: getString(R.string.call_ended)
                 durationTv.visibility = View.GONE
                 controlPanel.visibility = View.GONE
                 incomingButtons.visibility = View.GONE

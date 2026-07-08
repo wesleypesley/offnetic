@@ -72,9 +72,23 @@ class NcapManagerImpl @Inject constructor(
         private const val PROXIMITY_SILENT_MS = 5 * 60 * 1000L
         private const val PING_COOLDOWN_MS = 15 * 60 * 1000L
         private const val MAX_DECRYPT_FAILURES = 3
+        private const val FILE_META_TTL_MS = 5 * 60 * 1000L
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+    init {
+        scope.launch {
+            while (true) {
+                kotlinx.coroutines.delay(FILE_META_TTL_MS)
+                val cutoff = System.currentTimeMillis() - FILE_META_TTL_MS
+                pendingFileMetas.entries.removeIf { it.value.receivedAt < cutoff }
+                incomingFilePayloadReceivedAt.entries.removeIf { (payloadId, ts) ->
+                    if (ts < cutoff) { incomingFilePayloads.remove(payloadId); true } else false
+                }
+            }
+        }
+    }
 
     private val _peers = MutableStateFlow<List<PeerInfo>>(emptyList())
     override val peers: StateFlow<List<PeerInfo>> = _peers.asStateFlow()
@@ -152,6 +166,7 @@ class NcapManagerImpl @Inject constructor(
     private val heartbeatJobs = ConcurrentHashMap<String, kotlinx.coroutines.Job>()
     private val pendingFileMetas = ConcurrentHashMap<Long, FileMeta>()
     private val incomingFilePayloads = ConcurrentHashMap<Long, Payload>()
+    private val incomingFilePayloadReceivedAt = ConcurrentHashMap<Long, Long>()
     private val outgoingFileTransfers = ConcurrentHashMap<Long, CompletableDeferred<Unit>>()
 
     private val lifecycleCallback = object : ConnectionLifecycleCallback() {
@@ -688,6 +703,7 @@ class NcapManagerImpl @Inject constructor(
                 if (payload.type == Payload.Type.FILE) {
                     android.util.Log.e("NcapFile", "onPayloadReceived FILE payloadId=${payload.id} — stashing")
                     incomingFilePayloads[payload.id] = payload
+                    incomingFilePayloadReceivedAt[payload.id] = System.currentTimeMillis()
                     return
                 }
                 scope.launch {
@@ -706,6 +722,7 @@ class NcapManagerImpl @Inject constructor(
                             if (meta != null) {
                                 android.util.Log.e("NcapFile", "onPayloadTransferUpdate meta ready — processing file immediately")
                                 incomingFilePayloads.remove(update.payloadId)
+                                incomingFilePayloadReceivedAt.remove(update.payloadId)
                                 scope.launch {
                                     handleIncomingFile(endpointId, publicKey, stashedPayload)
                                 }
@@ -719,6 +736,7 @@ class NcapManagerImpl @Inject constructor(
                         outgoingFileTransfers.remove(update.payloadId)
                             ?.completeExceptionally(java.io.IOException("File transfer failed (status=${update.status})"))
                         if (incomingFilePayloads.remove(update.payloadId) != null) {
+                            incomingFilePayloadReceivedAt.remove(update.payloadId)
                             handleFailedIncomingFile(publicKey, update.payloadId)
                         } else {
                             pendingFileMetas.remove(update.payloadId)
@@ -889,6 +907,7 @@ class NcapManagerImpl @Inject constructor(
                             if (waitingPayload != null) {
                                 android.util.Log.e("NcapFile", "FILE_TRANSFER_REQUEST meta arrived — file was waiting, processing now")
                                 incomingFilePayloads.remove(payloadId)
+                                incomingFilePayloadReceivedAt.remove(payloadId)
                                 scope.launch {
                                     handleIncomingFile(endpointId, senderPublicKey, waitingPayload)
                                 }

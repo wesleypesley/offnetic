@@ -8,10 +8,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 import java.util.Base64
+import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -21,8 +20,7 @@ class RelayControlSender @Inject constructor(
     private val relayPool: RelayPool
 ) {
     private val receiptScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val receiptMutex = Mutex()
-    private var lastReceiptAt = 0L
+    private val lastReceiptAtMs = AtomicLong(0L)
     suspend fun sendConnectionRequest(
         recipientNpub: String,
         myOffneticPk: String,
@@ -96,11 +94,11 @@ class RelayControlSender @Inject constructor(
         return relayPool.publish(giftWrap) > 0
     }
 
-    private suspend fun throttledReceipt(recipientNpub: String, messageUuid: String, type: String) = receiptMutex.withLock {
-        val wait = RECEIPT_INTERVAL_MS - (System.currentTimeMillis() - lastReceiptAt)
+    private suspend fun throttledReceipt(recipientNpub: String, messageUuid: String, type: String) {
+        val wait = RECEIPT_INTERVAL_MS - (System.currentTimeMillis() - lastReceiptAtMs.get())
         if (wait > 0) delay(wait)
+        lastReceiptAtMs.set(System.currentTimeMillis())
         runCatching { publishReceipt(recipientNpub, messageUuid, type) }
-        lastReceiptAt = System.currentTimeMillis()
     }
 
     private suspend fun publishReceipt(recipientNpub: String, messageUuid: String, type: String) {

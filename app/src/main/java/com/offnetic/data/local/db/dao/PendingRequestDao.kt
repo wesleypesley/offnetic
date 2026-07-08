@@ -6,6 +6,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import com.offnetic.data.local.db.entity.PendingRequestEntity
 import com.offnetic.data.local.db.entity.RequestState
+import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface PendingRequestDao {
@@ -17,6 +18,9 @@ interface PendingRequestDao {
 
     @Query("SELECT * FROM pending_request WHERE direction = 'INBOUND' AND state = 'PENDING' ORDER BY createdAt DESC")
     suspend fun getInboundPending(): List<PendingRequestEntity>
+
+    @Query("SELECT * FROM pending_request WHERE direction = 'INBOUND' AND state = 'PENDING' ORDER BY createdAt DESC")
+    fun getInboundPendingFlow(): Flow<List<PendingRequestEntity>>
 
     @Query("SELECT * FROM pending_request WHERE direction = 'OUTBOUND' AND state = 'PENDING' ORDER BY createdAt ASC")
     suspend fun getOutboundPending(): List<PendingRequestEntity>

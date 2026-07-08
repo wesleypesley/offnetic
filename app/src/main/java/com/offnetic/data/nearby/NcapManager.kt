@@ -12,7 +12,8 @@ data class FileMeta(
     val fileName: String,
     val fileSize: Long,
     val mimeType: String,
-    val durationLabel: String? = null
+    val durationLabel: String? = null,
+    val receivedAt: Long = System.currentTimeMillis()
 )
 
 data class CallSignal(

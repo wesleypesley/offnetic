@@ -9,6 +9,7 @@ import com.offnetic.data.local.db.dao.ProfileDao
 import com.offnetic.data.local.db.entity.Contact
 import com.offnetic.data.local.db.entity.PendingRequestEntity
 import com.offnetic.data.local.db.entity.RequestState
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -33,6 +34,8 @@ class RelayRequestManager @Inject constructor(
     private val outboundAttempts = ConcurrentHashMap<String, Attempt>()
 
     suspend fun pendingRequests(): List<PendingRequestEntity> = pendingRequestDao.getInboundPending()
+
+    fun pendingRequestsFlow(): Flow<List<PendingRequestEntity>> = pendingRequestDao.getInboundPendingFlow()
 
     suspend fun refreshCount() {
         pendingRequestDao.deleteExpired(System.currentTimeMillis())

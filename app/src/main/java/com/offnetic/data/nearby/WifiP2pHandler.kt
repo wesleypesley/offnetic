@@ -336,6 +336,10 @@ class WifiP2pHandler @Inject constructor(
         p2pCallJob = null
         android.util.Log.e(TAG, "P2P teardown")
         try { p2pManager?.removeGroup(channel, null) } catch (_: Exception) {}
+        if (receiverRegistered) {
+            try { context.unregisterReceiver(receiver) } catch (_: Exception) {}
+            receiverRegistered = false
+        }
         connectionInfoDeferred = null
         p2pConnectionReady.values.forEach { if (!it.isCompleted) it.complete(false) }
         p2pConnectionReady.clear()
