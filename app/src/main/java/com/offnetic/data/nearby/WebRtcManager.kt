@@ -775,15 +775,12 @@ class WebRtcManager(
         pc.addTrack(audioTrack)
 
         if (isVideo) {
-            val videoCapturer = createVideoCapturer()
+            val videoCapturer = createVideoCapturer(peerPublicKey)
             if (videoCapturer != null) {
                 val surfaceTextureHelper = SurfaceTextureHelper.create("video_$peerPublicKey", egl.eglBaseContext)
                 surfaceTextureHelpers[peerPublicKey]?.dispose()
                 surfaceTextureHelpers[peerPublicKey] = surfaceTextureHelper
                 val videoSource = factory.createVideoSource(videoCapturer.isScreencast)
-                activeVideoPeer = peerPublicKey
-                activeSurfaceTextureHelper = surfaceTextureHelper
-                activeVideoSource = videoSource
                 videoCapturer.initialize(surfaceTextureHelper, context, videoSource.capturerObserver)
                 val videoTrack = factory.createVideoTrack("video_$peerPublicKey", videoSource)
                 localVideoTracks[peerPublicKey] = videoTrack
@@ -796,9 +793,9 @@ class WebRtcManager(
         return pc
     }
 
-    private fun createVideoCapturer(): VideoCapturer? {
+    private fun createVideoCapturer(peerPublicKey: String): VideoCapturer? {
         val handler = object : CameraVideoCapturer.CameraEventsHandler {
-            override fun onCameraError(error: String) { scope.launch { fallbackToCamera1() } }
+            override fun onCameraError(error: String) { scope.launch { fallbackToCamera1(peerPublicKey) } }
             override fun onCameraDisconnected() { onCameraError("disconnected") }
             override fun onCameraFreezed(error: String) { onCameraError("freezed: $error") }
             override fun onCameraOpening(cameraName: String) {}
@@ -816,16 +813,17 @@ class WebRtcManager(
         return if (names.isNotEmpty()) enumerator.createCapturer(names[0], handler) else null
     }
 
-    private var activeVideoPeer: String? = null
-    private var activeSurfaceTextureHelper: SurfaceTextureHelper? = null
-    private var activeVideoSource: VideoSource? = null
-
-    private fun fallbackToCamera1() {
-        val peerKey = activeVideoPeer ?: return
-        val stHelper = activeSurfaceTextureHelper ?: return
-        val vSource = activeVideoSource ?: return
-        android.util.Log.e("WebRTC_ICE", "fallbackToCamera1 for $peerKey")
-        videoCapturers[peerKey]?.stopCapture()
+    // Per-peer fallback — resolves the helper/source from this peer's own maps so a
+    // camera error during concurrent video calls can't rebuild into another peer's
+    // video source (#9).
+    private fun fallbackToCamera1(peerKey: String) {
+        val stHelper = surfaceTextureHelpers[peerKey] ?: return
+        val vSource = videoSources[peerKey] ?: return
+        android.util.Log.e("WebRTC_ICE", "fallbackToCamera1 for ${peerKey.take(8)}")
+        videoCapturers[peerKey]?.let {
+            try { it.stopCapture() } catch (e: Exception) { Timber.w(e, "stopCapture failed in fallback") }
+            it.dispose()
+        }
         val enumerator = Camera1Enumerator(true)
         val deviceNames = enumerator.deviceNames
         if (deviceNames.isNotEmpty()) {

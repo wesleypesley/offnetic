@@ -25,6 +25,12 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE chatId = :chatId AND id < :beforeId ORDER BY timestamp ASC LIMIT :limit")
     fun getMessagesBefore(chatId: String, beforeId: Long, limit: Int): Flow<List<Message>>
 
+    // Newest :limit messages, returned in ascending order for display. The plain
+    // ASC LIMIT query returns the OLDEST rows — in chats past the limit, new
+    // messages would never appear (D4).
+    @Query("SELECT * FROM (SELECT * FROM messages WHERE chatId = :chatId ORDER BY timestamp DESC, id DESC LIMIT :limit) ORDER BY timestamp ASC, id ASC")
+    fun getRecentMessagesForChat(chatId: String, limit: Int): Flow<List<Message>>
+
     @Query("SELECT * FROM messages WHERE id = :id")
     suspend fun getById(id: Long): Message?
 

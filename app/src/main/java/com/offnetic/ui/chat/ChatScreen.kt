@@ -62,6 +62,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -86,6 +87,7 @@ import com.offnetic.domain.model.Message
 import com.offnetic.domain.model.MessageDeliveryState
 import com.offnetic.ui.theme.Spacing
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -145,6 +147,17 @@ fun ChatScreen(
                 listState.animateScrollToItem(messages.size - 1)
             }
         }
+    }
+
+    // Load an older page when the user scrolls to the top of the window (D4).
+    // Items are keyed by message id, so LazyColumn keeps the scroll anchored
+    // when the older page prepends.
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.firstVisibleItemIndex }
+            .distinctUntilChanged()
+            .collect { firstVisible ->
+                if (firstVisible == 0) viewModel.loadOlderMessages()
+            }
     }
 
     Box(

@@ -107,6 +107,23 @@ class SignalProtocolStoreImpl @Inject constructor(
         runBlocking { signalPreKeyDao.trimToLimit() }
     }
 
+    // Suspend helpers for SignalProtocolManager — used to seed ID counters from
+    // persisted state so restarts never reuse (and overwrite) existing key IDs.
+    suspend fun maxPreKeyId(): Int? = signalPreKeyDao.maxId()
+
+    suspend fun maxSignedPreKeyId(): Int? = signalSignedPreKeyDao.maxId()
+
+    suspend fun maxKyberPreKeyId(): Int? = signalSenderKeyDao.kyberKeyIds()
+        .mapNotNull { it.removePrefix("kyber_").toIntOrNull() }
+        .maxOrNull()
+
+    suspend fun oneTimePreKeyCount(): Int = signalPreKeyDao.count()
+
+    suspend fun latestSignedPreKey(): SignedPreKeyRecord? =
+        signalSignedPreKeyDao.maxId()?.let { id ->
+            signalSignedPreKeyDao.load(id)?.let { SignedPreKeyRecord(it.record) }
+        }
+
     // --- SignedPreKeyStore ---
 
     override fun loadSignedPreKey(signedPreKeyId: Int): SignedPreKeyRecord? {

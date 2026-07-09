@@ -19,4 +19,7 @@ interface SignalSignedPreKeyDao {
 
     @Query("DELETE FROM signal_signed_pre_keys WHERE signedPreKeyId = :signedPreKeyId")
     suspend fun remove(signedPreKeyId: Int)
+
+    @Query("SELECT MAX(signedPreKeyId) FROM signal_signed_pre_keys")
+    suspend fun maxId(): Int?
 }

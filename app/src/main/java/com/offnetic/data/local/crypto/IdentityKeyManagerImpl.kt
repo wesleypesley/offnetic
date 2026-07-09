@@ -45,12 +45,21 @@ class IdentityKeyManagerImpl @Inject constructor(
 
     private val cipherMutex = Mutex()
 
+    // Guards the check-then-generate sequence: onboarding and the foreground service
+    // can both call this concurrently, and without the lock each sees no identity and
+    // generates one — the second insert silently replaces the first (#63)
+    private val generateMutex = Mutex()
+
     override suspend fun generateIdentityIfNeeded(): Identity = withContext(Dispatchers.IO) {
+        generateMutex.withLock { generateIdentityLocked() }
+    }
+
+    private suspend fun generateIdentityLocked(): Identity {
         val existing = getIdentity()
         if (existing != null) {
             try {
                 getIdentityKeyPair()
-                return@withContext existing
+                return existing
             } catch (_: Exception) {
                 deleteIdentity()
             }
@@ -77,7 +86,7 @@ class IdentityKeyManagerImpl @Inject constructor(
         )
 
         identityDao.insert(identity)
-        identity
+        return identity
     }
 
     override suspend fun getIdentity(): Identity? = withContext(Dispatchers.IO) {

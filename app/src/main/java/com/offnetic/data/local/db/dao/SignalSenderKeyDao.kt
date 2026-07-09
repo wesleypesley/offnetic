@@ -16,4 +16,7 @@ interface SignalSenderKeyDao {
 
     @Query("DELETE FROM signal_sender_keys WHERE senderKeyId = :senderKeyId")
     suspend fun remove(senderKeyId: String)
+
+    @Query("SELECT senderKeyId FROM signal_sender_keys WHERE senderKeyId LIKE 'kyber\\_%' ESCAPE '\\'")
+    suspend fun kyberKeyIds(): List<String>
 }

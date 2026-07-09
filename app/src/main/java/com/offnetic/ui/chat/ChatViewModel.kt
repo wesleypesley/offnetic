@@ -39,6 +39,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -51,6 +52,7 @@ import javax.inject.Inject
 private const val RELAY_OUTBOX_TTL_MS = 7L * 24 * 60 * 60 * 1000
 private const val RELAY_OUTBOX_CAP = 50
 private const val CONNECTION_REQUEST_TTL_MS = 72L * 60 * 60 * 1000
+private const val MESSAGE_PAGE_SIZE = 100
 
 data class ChatUiState(
     val messages: List<com.offnetic.domain.model.Message> = emptyList(),
@@ -125,9 +127,22 @@ class ChatViewModel @Inject constructor(
         activeChatTracker.clearIfActive(contactPublicKey)
     }
 
-    val messages: StateFlow<List<com.offnetic.domain.model.Message>> = messageDao.getMessagesForChat(contactPublicKey, 100, 0)
+    // Window of newest messages; grows by MESSAGE_PAGE_SIZE when the user scrolls
+    // to the top (D4). Stays reactive — new messages appear because the query always
+    // selects the newest rows.
+    private val messageLimit = MutableStateFlow(MESSAGE_PAGE_SIZE)
+
+    val messages: StateFlow<List<com.offnetic.domain.model.Message>> = messageLimit
+        .flatMapLatest { limit -> messageDao.getRecentMessagesForChat(contactPublicKey, limit) }
         .map { entities -> entities.map { com.offnetic.domain.model.Message.fromEntity(it) } }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    fun loadOlderMessages() {
+        val currentLimit = messageLimit.value
+        // A short page means we already have the full history — nothing older to load
+        if (messages.value.size < currentLimit) return
+        messageLimit.value = currentLimit + MESSAGE_PAGE_SIZE
+    }
 
     init {
         viewModelScope.launch {

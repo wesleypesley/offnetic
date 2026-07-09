@@ -5,6 +5,8 @@ import com.offnetic.data.local.crypto.IdentityKeyManager
 import com.offnetic.data.local.db.dao.PreKeyDao
 import com.offnetic.data.local.db.entity.PreKeyBundleEntity
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.util.concurrent.Executors
 import org.json.JSONObject
@@ -48,44 +50,78 @@ class SignalProtocolManager @Inject constructor(
     // Signal ratchet state is also inherently sequential, so serialization is correct.
     private val signalDispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
 
+    // Serializes initialize() bodies across suspension points — the single-threaded
+    // dispatcher alone does not prevent interleaving while a DB call is suspended (#63).
+    private val initMutex = Mutex()
+
+    // Counters must be seeded from persisted max IDs, otherwise every process restart
+    // begins at 1 and storeSignedPreKey/storeKyberPreKey REPLACE existing records —
+    // breaking sessions built from bundles that referenced the overwritten keys (#64).
+    private val seedMutex = Mutex()
+    private var countersSeeded = false
+
     suspend fun initialize() = withContext(signalDispatcher) {
-        if (identityKeyManager.getIdentity() == null) {
-            identityKeyManager.generateIdentityIfNeeded()
+        initMutex.withLock {
+            if (identityKeyManager.getIdentity() == null) {
+                identityKeyManager.generateIdentityIfNeeded()
+            }
+            val keyPair = identityKeyManager.getIdentityKeyPair()
+                ?: throw IllegalStateException("Failed to load identity keypair")
+            val identity = identityKeyManager.getIdentity()
+                ?: throw IllegalStateException("Failed to load identity")
+            protocolStore.setIdentityKeyPair(keyPair)
+            protocolStore.setRegistrationId(identity.registrationId)
         }
-        val keyPair = identityKeyManager.getIdentityKeyPair()
-            ?: throw IllegalStateException("Failed to load identity keypair")
-        val identity = identityKeyManager.getIdentity()
-            ?: throw IllegalStateException("Failed to load identity")
-        protocolStore.setIdentityKeyPair(keyPair)
-        protocolStore.setRegistrationId(identity.registrationId)
+        seedCountersIfNeeded()
+    }
+
+    private suspend fun seedCountersIfNeeded() = seedMutex.withLock {
+        if (countersSeeded) return@withLock
+        preKeyIdCounter.set((protocolStore.maxPreKeyId() ?: 0) + 1)
+        signedPreKeyIdCounter.set((protocolStore.maxSignedPreKeyId() ?: 0) + 1)
+        kyberPreKeyIdCounter.set((protocolStore.maxKyberPreKeyId() ?: 0) + 1)
+        countersSeeded = true
+        Timber.d(
+            "Signal key ID counters seeded: preKey=%d signed=%d kyber=%d",
+            preKeyIdCounter.get(), signedPreKeyIdCounter.get(), kyberPreKeyIdCounter.get()
+        )
     }
 
     suspend fun ensurePreKeys(count: Int = 100) = withContext(signalDispatcher) {
+        seedCountersIfNeeded()
         val identityPair = protocolStore.getIdentityKeyPair()
 
-        val signedKeyId = signedPreKeyIdCounter.getAndIncrement()
-        val signedKeyPair = ECKeyPair.generate()
-        val signature = identityPair.privateKey.calculateSignature(signedKeyPair.publicKey.serialize())
-        val signedPreKeyRecord = SignedPreKeyRecord(
-            signedKeyId,
-            System.currentTimeMillis(),
-            signedKeyPair,
-            signature
-        )
-        protocolStore.storeSignedPreKey(signedKeyId, signedPreKeyRecord)
+        // Signed pre-key is stable across bundles — only create when missing (#64)
+        if (protocolStore.maxSignedPreKeyId() == null) {
+            val signedKeyId = signedPreKeyIdCounter.getAndIncrement()
+            val signedKeyPair = ECKeyPair.generate()
+            val signature = identityPair.privateKey.calculateSignature(signedKeyPair.publicKey.serialize())
+            val signedPreKeyRecord = SignedPreKeyRecord(
+                signedKeyId,
+                System.currentTimeMillis(),
+                signedKeyPair,
+                signature
+            )
+            protocolStore.storeSignedPreKey(signedKeyId, signedPreKeyRecord)
+        }
 
-        val kyberKeyId = kyberPreKeyIdCounter.getAndIncrement()
-        val kyberKeyPair = KEMKeyPair.generate(KEMKeyType.KYBER_1024)
-        val kyberSignature = identityPair.privateKey.calculateSignature(kyberKeyPair.publicKey.serialize())
-        val kyberPreKeyRecord = KyberPreKeyRecord(
-            kyberKeyId,
-            System.currentTimeMillis(),
-            kyberKeyPair,
-            kyberSignature
-        )
-        protocolStore.storeKyberPreKey(kyberKeyId, kyberPreKeyRecord)
+        // Kyber pre-keys are consumed on use; keep at least one available (#64)
+        if (protocolStore.maxKyberPreKeyId() == null) {
+            val kyberKeyId = kyberPreKeyIdCounter.getAndIncrement()
+            val kyberKeyPair = KEMKeyPair.generate(KEMKeyType.KYBER_1024)
+            val kyberSignature = identityPair.privateKey.calculateSignature(kyberKeyPair.publicKey.serialize())
+            val kyberPreKeyRecord = KyberPreKeyRecord(
+                kyberKeyId,
+                System.currentTimeMillis(),
+                kyberKeyPair,
+                kyberSignature
+            )
+            protocolStore.storeKyberPreKey(kyberKeyId, kyberPreKeyRecord)
+        }
 
-        repeat(count) {
+        // Top up one-time pre-keys to the target instead of unconditionally adding `count`
+        val deficit = count - protocolStore.oneTimePreKeyCount()
+        repeat(deficit.coerceAtLeast(0)) {
             val preKeyId = preKeyIdCounter.getAndIncrement()
             val keyPair = ECKeyPair.generate()
             protocolStore.storePreKey(preKeyId, PreKeyRecord(preKeyId, keyPair))
@@ -94,20 +130,28 @@ class SignalProtocolManager @Inject constructor(
     }
 
     suspend fun buildPreKeyBundleBytes(): ByteArray = withContext(signalDispatcher) {
+        seedCountersIfNeeded()
         val identity = identityKeyManager.getIdentity()
             ?: throw IllegalStateException("No identity")
         val identityPair = protocolStore.getIdentityKeyPair()
 
+        // Fresh one-time EC pre-key per bundle (correct: consumed on session setup)
         val preKeyId = preKeyIdCounter.getAndIncrement()
         val keyPair = ECKeyPair.generate()
         protocolStore.storePreKey(preKeyId, PreKeyRecord(preKeyId, keyPair))
 
-        val signedPreKeyId = signedPreKeyIdCounter.getAndIncrement()
-        val signedKeyPair = ECKeyPair.generate()
-        val sig = identityPair.privateKey.calculateSignature(signedKeyPair.publicKey.serialize())
-        val signedRecord = SignedPreKeyRecord(signedPreKeyId, System.currentTimeMillis(), signedKeyPair, sig)
-        protocolStore.storeSignedPreKey(signedPreKeyId, signedRecord)
+        // Reuse the stable signed pre-key; generating a new one per bundle churned
+        // through IDs and invalidated earlier in-flight bundles (#64)
+        val signedRecord = protocolStore.latestSignedPreKey() ?: run {
+            val signedPreKeyId = signedPreKeyIdCounter.getAndIncrement()
+            val signedKeyPair = ECKeyPair.generate()
+            val sig = identityPair.privateKey.calculateSignature(signedKeyPair.publicKey.serialize())
+            SignedPreKeyRecord(signedPreKeyId, System.currentTimeMillis(), signedKeyPair, sig).also {
+                protocolStore.storeSignedPreKey(signedPreKeyId, it)
+            }
+        }
 
+        // Fresh Kyber pre-key per bundle (consumed on use via markKyberPreKeyUsed)
         val kyberPreKeyId = kyberPreKeyIdCounter.getAndIncrement()
         val kyberKeyPair = KEMKeyPair.generate(KEMKeyType.KYBER_1024)
         val kyberSig = identityPair.privateKey.calculateSignature(kyberKeyPair.publicKey.serialize())
@@ -117,7 +161,7 @@ class SignalProtocolManager @Inject constructor(
         serializeBundle(
             identity.registrationId, 1,
             preKeyId, keyPair.publicKey,
-            signedPreKeyId, signedKeyPair.publicKey, sig,
+            signedRecord.id, signedRecord.keyPair.publicKey, signedRecord.signature,
             identityPair.publicKey,
             kyberPreKeyId, kyberKeyPair.publicKey, kyberSig
         ).also { protocolStore.trimPreKeys() }
@@ -137,10 +181,20 @@ class SignalProtocolManager @Inject constructor(
             saveBundleToEntity(peerPublicKey, bundle)
         } catch (e: org.signal.libsignal.protocol.UntrustedIdentityException) {
             Timber.w("Untrusted identity for %s, accepting TOFU", peerPublicKey.take(8))
+            val previousIdentity = protocolStore.getIdentity(address)
             protocolStore.saveIdentity(address, bundle.identityKey)
-            SessionBuilder(protocolStore, address).process(bundle)
-            Timber.d("Session established (PQXDH/TOFU) for %s", peerPublicKey.take(8))
-            saveBundleToEntity(peerPublicKey, bundle)
+            try {
+                SessionBuilder(protocolStore, address).process(bundle)
+                Timber.d("Session established (PQXDH/TOFU) for %s", peerPublicKey.take(8))
+                saveBundleToEntity(peerPublicKey, bundle)
+            } catch (retryFailure: Exception) {
+                // Roll back the identity overwrite — otherwise a malformed bundle
+                // replaces the trusted identity without yielding a session (#65)
+                if (previousIdentity != null) {
+                    protocolStore.saveIdentity(address, previousIdentity)
+                }
+                throw retryFailure
+            }
         }
     }
 
@@ -210,10 +264,10 @@ class SignalProtocolManager @Inject constructor(
         protocolStore.deleteAllSessions(peerPublicKey)
     }
 
-    fun hasSession(peerPublicKey: String, deviceId: Int = 1): Boolean {
-        val address = SignalProtocolAddress(peerPublicKey, deviceId)
-        return protocolStore.containsSession(address)
-    }
+    suspend fun hasSession(peerPublicKey: String, deviceId: Int = 1): Boolean =
+        withContext(signalDispatcher) {
+            protocolStore.containsSession(SignalProtocolAddress(peerPublicKey, deviceId))
+        }
 
     private fun deserializeMessage(ciphertext: ByteArray): CiphertextMessage {
         return try {

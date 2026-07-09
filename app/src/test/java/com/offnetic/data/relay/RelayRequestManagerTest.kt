@@ -89,7 +89,7 @@ class RelayRequestManagerTest {
     @Test
     fun `republishOutbound re-sends a pending outbound request`() = runBlocking {
         db.identityDao().insert(Identity(publicKey = "me", encryptedPrivateKey = "x", privateKeyIv = "iv", registrationId = 1))
-        every { signal.hasSession(any(), any()) } returns false
+        coEvery { signal.hasSession(any(), any()) } returns false
         coEvery { signal.buildPreKeyBundleBytes() } returns "bundle".toByteArray()
         val id = RelayRequestManager.OUTBOUND_PREFIX + aliceNpub
         pending.upsert(
