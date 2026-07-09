@@ -142,7 +142,12 @@ fun ChatScreen(
 
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) {
-            listState.animateScrollToItem(messages.size - 1)
+            val info = listState.layoutInfo
+            val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: -1
+            val total = info.totalItemsCount
+            if (total == 0 || lastVisible >= total - 2) {
+                listState.animateScrollToItem(messages.size - 1)
+            }
         }
     }
 
@@ -432,9 +437,8 @@ private fun MessageBubble(
                             var isPlaying by remember { mutableStateOf(false) }
                             var mediaPlayer by remember { mutableStateOf<android.media.MediaPlayer?>(null) }
 
-                            DisposableEffect(Unit) {
+                            DisposableEffect(message.id) {
                                 onDispose {
-                                    mediaPlayer?.stop()
                                     mediaPlayer?.release()
                                 }
                             }

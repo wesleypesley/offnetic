@@ -563,6 +563,13 @@ class ChatViewModel @Inject constructor(
         return if (min > 0) "$min:${sec.toString().padStart(2, '0')}" else "0:${sec.toString().padStart(2, '0')}"
     }
 
+    override fun onCleared() {
+        super.onCleared()
+        if (voiceNoteRecorder.isRecording) {
+            voiceNoteRecorder.cancelRecording()
+        }
+    }
+
     fun deleteMessage(messageId: Long) {
         viewModelScope.launch {
             try {
