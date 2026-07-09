@@ -16,4 +16,7 @@ interface PreKeyDao {
 
     @Query("DELETE FROM prekey_bundles WHERE publicKey = :publicKey")
     suspend fun delete(publicKey: String)
+
+    @Query("DELETE FROM prekey_bundles WHERE createdAt < :cutoff")
+    suspend fun deleteOlderThan(cutoff: Long)
 }

@@ -19,6 +19,8 @@ import com.offnetic.data.local.db.dao.IdentityDao
 import com.offnetic.data.nearby.NcapManager
 import com.offnetic.data.crypto.NostrIdentityManager
 import com.offnetic.data.crypto.nostr.Hex
+import com.offnetic.data.local.db.dao.CallHistoryDao
+import com.offnetic.data.local.db.dao.PreKeyDao
 import com.offnetic.data.local.db.dao.RelayStateDao
 import com.offnetic.data.relay.RelayFilter
 import com.offnetic.data.relay.RelayPool
@@ -50,6 +52,8 @@ class NcapForegroundService : Service() {
     @Inject lateinit var relayInboxHandler: RelayInboxHandler
     @Inject lateinit var relayRequestManager: RelayRequestManager
     @Inject lateinit var relayStateDao: RelayStateDao
+    @Inject lateinit var preKeyDao: PreKeyDao
+    @Inject lateinit var callHistoryDao: CallHistoryDao
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     @Volatile private var isNcapActive = false
@@ -171,6 +175,10 @@ class NcapForegroundService : Service() {
                     RelayFilter(kinds = listOf(GiftWrap.KIND_GIFT_WRAP), pTags = listOf(myNpubHex), since = since)
                 )
                 Timber.d("RelaySvc subscribed since=$since pTag=${myNpubHex.take(8)}")
+
+                val now = System.currentTimeMillis()
+                preKeyDao.deleteOlderThan(now - 30L * 24 * 60 * 60 * 1000)
+                callHistoryDao.deleteOlderThan(now - 90L * 24 * 60 * 60 * 1000)
 
                 launch {
                     relayPool.events.collect { event ->

@@ -20,4 +20,7 @@ interface CallHistoryDao {
 
     @Query("SELECT * FROM call_history WHERE peerPublicKey = :peerPublicKey ORDER BY timestamp DESC")
     fun getByPeer(peerPublicKey: String): Flow<List<CallHistoryEntity>>
+
+    @Query("DELETE FROM call_history WHERE timestamp < :cutoff")
+    suspend fun deleteOlderThan(cutoff: Long)
 }

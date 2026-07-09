@@ -43,6 +43,7 @@ class CallViewModel @AssistedInject constructor(
     private var isIncoming: Boolean = false
     private var cameraEnabled: Boolean = false
     private var hangupRecorded: Boolean = false
+    private var callWasMissed: Boolean = false
 
     private val internalScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
@@ -115,8 +116,11 @@ class CallViewModel @AssistedInject constructor(
                         CallHistoryEntity(
                             peerPublicKey = peerPublicKey,
                             type = CallHistoryEntity.TYPE_VIDEO,
-                            direction = if (isIncoming) CallHistoryEntity.DIRECTION_INCOMING
-                                else CallHistoryEntity.DIRECTION_OUTGOING,
+                            direction = when {
+                                callWasMissed -> CallHistoryEntity.DIRECTION_MISSED
+                                isIncoming -> CallHistoryEntity.DIRECTION_INCOMING
+                                else -> CallHistoryEntity.DIRECTION_OUTGOING
+                            },
                             timestamp = System.currentTimeMillis(),
                             durationSeconds = if (prevPhase == CallPhase.CONNECTED) callDurationSeconds(state.connectedAt) else 0
                         )
@@ -219,16 +223,8 @@ class CallViewModel @AssistedInject constructor(
         timeoutJob = internalScope.launch {
             delay(60_000L)
             if (callStateFlow.value.phase == CallPhase.INCOMING) {
+                callWasMissed = true
                 callStateFlow.update { it.copy(phase = CallPhase.ENDED, error = "Missed call") }
-                callHistoryDao.insert(
-                    CallHistoryEntity(
-                        peerPublicKey = peerPublicKey,
-                        type = CallHistoryEntity.TYPE_VIDEO,
-                        direction = CallHistoryEntity.DIRECTION_MISSED,
-                        timestamp = System.currentTimeMillis(),
-                        durationSeconds = 0
-                    )
-                )
                 _finishEvent.emit(Unit)
             }
         }
