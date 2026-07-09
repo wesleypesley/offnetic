@@ -1,3 +1,7 @@
+# Secp256k1 JNI — class names must match native library bindings
+-keep class fr.acinq.secp256k1.** { *; }
+-keepclassmembers class fr.acinq.secp256k1.** { *; }
+
 # libsignal JNI bridge - CRITICAL
 -keep class org.signal.libsignal.** { *; }
 -keepclassmembers class org.signal.libsignal.** { *; }

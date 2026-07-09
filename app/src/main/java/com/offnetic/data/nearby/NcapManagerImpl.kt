@@ -558,14 +558,7 @@ class NcapManagerImpl @Inject constructor(
         val isEmpty = endpointPeers.isEmpty()
         android.util.Log.e("NcapConn", "findOrAwait: NOT found — isEmpty=$isEmpty nearby=${_nearbyState.value} adv=$isAdvertising disc=${_isDiscovering.value}")
         if (isEmpty) {
-            val name = identityDao.getIdentity()?.publicKey ?: return null
-            if (isAdvertising) { try { connectionsClient.stopAdvertising() } catch (_: Exception) {}; isAdvertising = false }
-            if (_isDiscovering.value) { try { connectionsClient.stopDiscovery() } catch (_: Exception) {}; _isDiscovering.value = false }
-            _nearbyState.value = NearbyState.Idle
-            kotlinx.coroutines.delay(1000L)
-            startAdvertising(name)
-            startDiscovery()
-            android.util.Log.e("NcapConn", "findOrAwait: restarted — advertising=$isAdvertising discovering=${_isDiscovering.value}")
+            android.util.Log.e("NcapConn", "findOrAwait: empty — waiting for foreground service discovery")
         }
         for (attempt in 1..30) {
             kotlinx.coroutines.delay(2000L)
@@ -574,18 +567,7 @@ class NcapManagerImpl @Inject constructor(
                 android.util.Log.e("NcapConn", "findOrAwait: found on attempt $attempt → $found2")
                 return found2
             }
-            if (attempt % 5 == 0 && endpointPeers.isEmpty()) {
-                android.util.Log.e("NcapConn", "findOrAwait: attempt $attempt — still empty, re-restarting")
-                val name = identityDao.getIdentity()?.publicKey ?: return null
-                if (isAdvertising) { try { connectionsClient.stopAdvertising() } catch (_: Exception) {}; isAdvertising = false }
-                if (_isDiscovering.value) { try { connectionsClient.stopDiscovery() } catch (_: Exception) {}; _isDiscovering.value = false }
-                _nearbyState.value = NearbyState.Idle
-                kotlinx.coroutines.delay(1000L)
-                startAdvertising(name)
-                startDiscovery()
-            }
-            val snapshot = endpointPeers.entries.map { "${it.key.take(6)}→len${it.value.publicKey.length} ${it.value.publicKey.take(12)}..." }
-            android.util.Log.e("NcapConn", "findOrAwait: attempt $attempt — peers(${endpointPeers.size}): $snapshot")
+            android.util.Log.e("NcapConn", "findOrAwait: attempt $attempt — peers(${endpointPeers.size})")
         }
         return null
     }

@@ -68,11 +68,35 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
-            isShrinkResources = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
             signingConfig = signingConfigs.getByName("release")
         }
         debug { isMinifyEnabled = false; isDebuggable = true }
+    }
+}
+
+tasks.matching { it.name == "mergeReleaseNativeLibs" }.configureEach {
+    doLast {
+        val stripExe = file("${android.sdkDirectory}/ndk/28.2.13676358/toolchains/llvm/prebuilt/windows-x86_64/bin/llvm-strip.exe")
+        if (!stripExe.exists()) return@doLast
+        val libDir = file("${layout.buildDirectory.get()}/intermediates/merged_native_libs/release/mergeReleaseNativeLibs/out/lib")
+        val abis = listOf("arm64-v8a")
+        abis.forEach { abi ->
+            val abiDir = file("$libDir/$abi")
+            if (abiDir.exists()) {
+                abiDir.listFiles()?.filter { it.extension == "so" }?.forEach { lib ->
+                    val before = lib.length()
+                    exec { commandLine(stripExe.absolutePath, "--strip-debug", lib.absolutePath) }
+                    val after = lib.length()
+                    println("Stripped ${lib.name}: ${before / 1024}KB → ${after / 1024}KB")
+                }
+            }
+        }
     }
 }
 
