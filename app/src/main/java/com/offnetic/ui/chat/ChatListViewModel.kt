@@ -16,9 +16,11 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import timber.log.Timber
 import javax.inject.Inject
 
 data class ChatSummary(
@@ -45,8 +47,11 @@ class ChatListViewModel @Inject constructor(
     private val _profileDisplayName = MutableStateFlow("")
     val profileDisplayName: StateFlow<String> = _profileDisplayName.asStateFlow()
     val pendingRequestCount: StateFlow<Int> = relayRequestManager.inboundCount
+    val isDiscovering: StateFlow<Boolean> = ncapManager.isDiscovering
 
-    val chatSummaries: StateFlow<List<ChatSummary>> = _myPublicKey.flatMapLatest { myPk ->
+    val chatSummaries: StateFlow<List<ChatSummary>> = _myPublicKey
+        .filter { it.isNotEmpty() }
+        .flatMapLatest { myPk ->
         combine(
             messageDao.getChatSummaries(),
             messageDao.getUnreadCountsPerChat(myPk),
@@ -77,12 +82,16 @@ class ChatListViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            relayRequestManager.refreshCount()
-            identityDao.getIdentity()?.let { id ->
-                _myPublicKey.value = id.publicKey
-                profileDao.getByPublicKey(id.publicKey)?.let { profile ->
-                    _profileDisplayName.value = profile.displayName
+            try {
+                relayRequestManager.refreshCount()
+                identityDao.getIdentity()?.let { id ->
+                    _myPublicKey.value = id.publicKey
+                    profileDao.getByPublicKey(id.publicKey)?.let { profile ->
+                        _profileDisplayName.value = profile.displayName
+                    }
                 }
+            } catch (e: Exception) {
+                Timber.e(e, "ChatListViewModel init failed")
             }
         }
     }

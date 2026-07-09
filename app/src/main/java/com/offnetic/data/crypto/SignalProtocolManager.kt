@@ -4,8 +4,9 @@ import android.util.Base64
 import com.offnetic.data.local.crypto.IdentityKeyManager
 import com.offnetic.data.local.db.dao.PreKeyDao
 import com.offnetic.data.local.db.entity.PreKeyBundleEntity
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.withContext
+import java.util.concurrent.Executors
 import org.json.JSONObject
 import org.signal.libsignal.protocol.DuplicateMessageException
 import org.signal.libsignal.protocol.IdentityKey
@@ -42,7 +43,12 @@ class SignalProtocolManager @Inject constructor(
     private val signedPreKeyIdCounter = AtomicInteger(1)
     private val kyberPreKeyIdCounter = AtomicInteger(1)
 
-    suspend fun initialize() = withContext(Dispatchers.IO) {
+    // Single-threaded dispatcher prevents concurrent runBlocking calls in SignalProtocolStoreImpl
+    // from exhausting the IO thread pool when many messages are decrypted in parallel.
+    // Signal ratchet state is also inherently sequential, so serialization is correct.
+    private val signalDispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
+
+    suspend fun initialize() = withContext(signalDispatcher) {
         if (identityKeyManager.getIdentity() == null) {
             identityKeyManager.generateIdentityIfNeeded()
         }
@@ -54,7 +60,7 @@ class SignalProtocolManager @Inject constructor(
         protocolStore.setRegistrationId(identity.registrationId)
     }
 
-    suspend fun ensurePreKeys(count: Int = 100) = withContext(Dispatchers.IO) {
+    suspend fun ensurePreKeys(count: Int = 100) = withContext(signalDispatcher) {
         val identityPair = protocolStore.getIdentityKeyPair()
 
         val signedKeyId = signedPreKeyIdCounter.getAndIncrement()
@@ -87,7 +93,7 @@ class SignalProtocolManager @Inject constructor(
         protocolStore.trimPreKeys()
     }
 
-    suspend fun buildPreKeyBundleBytes(): ByteArray = withContext(Dispatchers.IO) {
+    suspend fun buildPreKeyBundleBytes(): ByteArray = withContext(signalDispatcher) {
         val identity = identityKeyManager.getIdentity()
             ?: throw IllegalStateException("No identity")
         val identityPair = protocolStore.getIdentityKeyPair()
@@ -121,7 +127,7 @@ class SignalProtocolManager @Inject constructor(
         peerPublicKey: String,
         bundleBytes: ByteArray,
         deviceId: Int = 1
-    ) = withContext(Dispatchers.IO) {
+    ) = withContext(signalDispatcher) {
         val bundle = deserializeBundle(bundleBytes)
         val address = SignalProtocolAddress(peerPublicKey, deviceId)
 
@@ -142,7 +148,7 @@ class SignalProtocolManager @Inject constructor(
         peerPublicKey: String,
         message: ByteArray,
         deviceId: Int = 1
-    ): ByteArray = withContext(Dispatchers.IO) {
+    ): ByteArray = withContext(signalDispatcher) {
         val address = SignalProtocolAddress(peerPublicKey, deviceId)
         val cipher = SessionCipher(protocolStore, address)
         val result = cipher.encrypt(message)
@@ -154,7 +160,7 @@ class SignalProtocolManager @Inject constructor(
         peerPublicKey: String,
         ciphertext: ByteArray,
         deviceId: Int = 1
-    ): ByteArray? = withContext(Dispatchers.IO) {
+    ): ByteArray? = withContext(signalDispatcher) {
         val address = SignalProtocolAddress(peerPublicKey, deviceId)
 
         try {
@@ -192,7 +198,7 @@ class SignalProtocolManager @Inject constructor(
 
     suspend fun handleShatteredSession(
         peerPublicKey: String
-    ): ByteArray = withContext(Dispatchers.IO) {
+    ): ByteArray = withContext(signalDispatcher) {
         // Build the bundle BEFORE deleting the session so a keygen failure leaves
         // the existing session intact rather than permanently deadlocking decryption.
         val newBundle = buildPreKeyBundleBytes()
@@ -200,7 +206,7 @@ class SignalProtocolManager @Inject constructor(
         newBundle
     }
 
-    suspend fun deleteSession(peerPublicKey: String) = withContext(Dispatchers.IO) {
+    suspend fun deleteSession(peerPublicKey: String) = withContext(signalDispatcher) {
         protocolStore.deleteAllSessions(peerPublicKey)
     }
 

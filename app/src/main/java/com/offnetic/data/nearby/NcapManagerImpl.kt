@@ -110,7 +110,8 @@ class NcapManagerImpl @Inject constructor(
 
     private val endpointPeers = ConcurrentHashMap<String, PeerInfo>()
     @Volatile private var isAdvertising = false
-    @Volatile private var isDiscovering = false
+    private val _isDiscovering = MutableStateFlow(false)
+    override val isDiscovering: StateFlow<Boolean> = _isDiscovering.asStateFlow()
     private var currentAdvertisingName: String = ""
     private val callActiveCount = AtomicInteger(0)
     private val deferredFilePayloads = ConcurrentHashMap<Long, Pair<String, Payload>>()
@@ -368,7 +369,7 @@ class NcapManagerImpl @Inject constructor(
             options
         ).addOnSuccessListener {
             isAdvertising = true
-            _nearbyState.value = if (isDiscovering) NearbyState.Active else NearbyState.Advertising
+            _nearbyState.value = if (_isDiscovering.value) NearbyState.Active else NearbyState.Advertising
             Timber.d("Advertising started as: ${name.take(16)}...")
         }.addOnFailureListener { e ->
             isAdvertising = false
@@ -378,7 +379,7 @@ class NcapManagerImpl @Inject constructor(
     }
 
     override fun startDiscovery() {
-        if (isDiscovering) return
+        if (_isDiscovering.value) return
         try {
             val lm = context.getSystemService(android.content.Context.LOCATION_SERVICE) as android.location.LocationManager
             val locationEnabled = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -401,11 +402,11 @@ class NcapManagerImpl @Inject constructor(
 
             connectionsClient.startDiscovery(SERVICE_ID, discoveryCallback, options)
                 .addOnSuccessListener {
-                isDiscovering = true
+                _isDiscovering.value = true
                 _nearbyState.value = if (isAdvertising) NearbyState.Active else NearbyState.Discovering
                 android.util.Log.e("NcapConn", "startDiscovery: SUCCESS")
             }.addOnFailureListener { e ->
-                isDiscovering = false
+                _isDiscovering.value = false
                 android.util.Log.e("NcapConn", "startDiscovery: FAILED — ${e.message}")
                 _nearbyState.value = NearbyState.Error("Discovery failed: ${e.message}")
             }
@@ -415,14 +416,14 @@ class NcapManagerImpl @Inject constructor(
         if (!isAdvertising) return
         connectionsClient.stopAdvertising()
         isAdvertising = false
-        _nearbyState.value = if (isDiscovering) NearbyState.Discovering else NearbyState.Idle
+        _nearbyState.value = if (_isDiscovering.value) NearbyState.Discovering else NearbyState.Idle
         Timber.d("Advertising stopped")
     }
 
     override fun stopDiscovery() {
-        if (!isDiscovering) return
+        if (!_isDiscovering.value) return
         connectionsClient.stopDiscovery()
-        isDiscovering = false
+        _isDiscovering.value = false
         _nearbyState.value = if (isAdvertising) NearbyState.Advertising else NearbyState.Idle
         // Keep connected/connecting peers — only drop discovered-but-unconnected ones
         endpointPeers.entries.removeIf {
@@ -452,9 +453,9 @@ class NcapManagerImpl @Inject constructor(
             try { connectionsClient.stopAdvertising() } catch (_: Exception) {}
             isAdvertising = false
         }
-        if (isDiscovering) {
+        if (_isDiscovering.value) {
             try { connectionsClient.stopDiscovery() } catch (_: Exception) {}
-            isDiscovering = false
+            _isDiscovering.value = false
         }
         _nearbyState.value = NearbyState.Idle
         startAdvertising(name)
@@ -555,16 +556,16 @@ class NcapManagerImpl @Inject constructor(
             return found
         }
         val isEmpty = endpointPeers.isEmpty()
-        android.util.Log.e("NcapConn", "findOrAwait: NOT found — isEmpty=$isEmpty nearby=${_nearbyState.value} adv=$isAdvertising disc=$isDiscovering")
+        android.util.Log.e("NcapConn", "findOrAwait: NOT found — isEmpty=$isEmpty nearby=${_nearbyState.value} adv=$isAdvertising disc=${_isDiscovering.value}")
         if (isEmpty) {
             val name = identityDao.getIdentity()?.publicKey ?: return null
             if (isAdvertising) { try { connectionsClient.stopAdvertising() } catch (_: Exception) {}; isAdvertising = false }
-            if (isDiscovering) { try { connectionsClient.stopDiscovery() } catch (_: Exception) {}; isDiscovering = false }
+            if (_isDiscovering.value) { try { connectionsClient.stopDiscovery() } catch (_: Exception) {}; _isDiscovering.value = false }
             _nearbyState.value = NearbyState.Idle
             kotlinx.coroutines.delay(1000L)
             startAdvertising(name)
             startDiscovery()
-            android.util.Log.e("NcapConn", "findOrAwait: restarted — advertising=$isAdvertising discovering=$isDiscovering")
+            android.util.Log.e("NcapConn", "findOrAwait: restarted — advertising=$isAdvertising discovering=${_isDiscovering.value}")
         }
         for (attempt in 1..30) {
             kotlinx.coroutines.delay(2000L)
@@ -577,7 +578,7 @@ class NcapManagerImpl @Inject constructor(
                 android.util.Log.e("NcapConn", "findOrAwait: attempt $attempt — still empty, re-restarting")
                 val name = identityDao.getIdentity()?.publicKey ?: return null
                 if (isAdvertising) { try { connectionsClient.stopAdvertising() } catch (_: Exception) {}; isAdvertising = false }
-                if (isDiscovering) { try { connectionsClient.stopDiscovery() } catch (_: Exception) {}; isDiscovering = false }
+                if (_isDiscovering.value) { try { connectionsClient.stopDiscovery() } catch (_: Exception) {}; _isDiscovering.value = false }
                 _nearbyState.value = NearbyState.Idle
                 kotlinx.coroutines.delay(1000L)
                 startAdvertising(name)

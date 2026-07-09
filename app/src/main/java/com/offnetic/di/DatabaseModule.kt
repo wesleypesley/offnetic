@@ -47,6 +47,7 @@ object DatabaseModule {
         )
             .openHelperFactory(factory)
             .addMigrations(OffneticDatabase.MIGRATION_9_10)
+            .fallbackToDestructiveMigration()
             .addCallback(object : androidx.room.RoomDatabase.Callback() {
                 override fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                     super.onCreate(db)

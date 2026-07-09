@@ -5,10 +5,13 @@ import androidx.lifecycle.viewModelScope
 import com.offnetic.data.local.db.entity.PendingRequestEntity
 import com.offnetic.data.relay.RelayRequestManager
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -26,15 +29,30 @@ class RequestsViewModel @Inject constructor(
         .map { list -> RequestsUiState(requests = list, isLoading = false) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), RequestsUiState())
 
+    private val _inFlight = MutableStateFlow<Set<String>>(emptySet())
+    val inFlight: StateFlow<Set<String>> = _inFlight.asStateFlow()
+
     fun accept(requestId: String) {
+        if (_inFlight.value.contains(requestId)) return
+        _inFlight.update { it + requestId }
         viewModelScope.launch {
-            relayRequestManager.acceptRequest(requestId)
+            try {
+                relayRequestManager.acceptRequest(requestId)
+            } finally {
+                _inFlight.update { it - requestId }
+            }
         }
     }
 
     fun ignore(requestId: String) {
+        if (_inFlight.value.contains(requestId)) return
+        _inFlight.update { it + requestId }
         viewModelScope.launch {
-            relayRequestManager.ignoreRequest(requestId)
+            try {
+                relayRequestManager.ignoreRequest(requestId)
+            } finally {
+                _inFlight.update { it - requestId }
+            }
         }
     }
 }

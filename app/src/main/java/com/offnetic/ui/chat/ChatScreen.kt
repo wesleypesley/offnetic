@@ -123,10 +123,6 @@ fun ChatScreen(
     }
 
     LaunchedEffect(Unit) {
-        viewModel.markAsRead()
-    }
-
-    LaunchedEffect(Unit) {
         viewModel.toastMessage.collect { msg ->
             Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
         }
@@ -626,6 +622,13 @@ private fun ImageThumbnail(
     var bitmap by remember(path) { mutableStateOf<Bitmap?>(null) }
     var failed by remember(path) { mutableStateOf(false) }
 
+    DisposableEffect(path) {
+        onDispose {
+            bitmap?.recycle()
+            bitmap = null
+        }
+    }
+
     LaunchedEffect(path) {
         try {
             val opts = BitmapFactory.Options().apply { inSampleSize = 2 }
@@ -684,6 +687,13 @@ private fun VideoThumbnail(
 ) {
     var frame by remember(path) { mutableStateOf<Bitmap?>(null) }
     var failed by remember(path) { mutableStateOf(false) }
+
+    DisposableEffect(path) {
+        onDispose {
+            frame?.recycle()
+            frame = null
+        }
+    }
 
     LaunchedEffect(path) {
         val retriever = MediaMetadataRetriever()
@@ -856,21 +866,25 @@ private fun inferMimeType(fileName: String): String {
     }
 }
 
+private val noisePoints: List<Pair<Float, Float>> = run {
+    val rng = Random(42)
+    (0 until 300).map { rng.nextFloat() to rng.nextFloat() }
+}
+
 @Composable
 private fun NoiseOverlay() {
     Canvas(modifier = Modifier.fillMaxSize()) {
-        val random = Random(42)
-        for (i in 0 until 300) {
+        for ((rx, ry) in noisePoints) {
             drawCircle(
                 Color.White,
                 radius = 1.0f,
-                center = Offset(random.nextFloat() * size.width, random.nextFloat() * size.height),
+                center = Offset(rx * size.width, ry * size.height),
                 alpha = 0.018f
             )
         }
     }
 }
 
-private fun formatTime(timestamp: Long): String {
-    return SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(timestamp))
-}
+private val timeFormatter = SimpleDateFormat("HH:mm", Locale.getDefault())
+
+private fun formatTime(timestamp: Long): String = timeFormatter.format(Date(timestamp))

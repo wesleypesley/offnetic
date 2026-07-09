@@ -41,7 +41,7 @@ class CallViewModel @AssistedInject constructor(
     }
 
     private var isIncoming: Boolean = false
-    private var cameraEnabled: Boolean = false
+    @Volatile private var cameraEnabled: Boolean = false
     private var hangupRecorded: Boolean = false
     private var callWasMissed: Boolean = false
 
@@ -84,9 +84,12 @@ class CallViewModel @AssistedInject constructor(
         internalScope.launch {
             webRtcManager.initialize()
             observeCallSignals()
-            callStateFlow.update { it.copy(
-                phase = CallPhase.INCOMING, isVideo = true
-            ) }
+            // Only set INCOMING if we haven't already advanced (e.g. fast accept before coroutine ran)
+            callStateFlow.update { current ->
+                if (current.phase == CallPhase.IDLE || current.phase == CallPhase.INCOMING) {
+                    current.copy(phase = CallPhase.INCOMING, isVideo = true)
+                } else current
+            }
             launchIncomingTimeout()
         }
     }

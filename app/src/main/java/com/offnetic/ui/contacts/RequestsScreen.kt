@@ -45,6 +45,7 @@ fun RequestsScreen(
     viewModel: RequestsViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
+    val inFlight by viewModel.inFlight.collectAsState()
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -107,6 +108,7 @@ fun RequestsScreen(
                     items(state.requests, key = { it.requestId }) { request ->
                         RequestItem(
                             request = request,
+                            isInFlight = request.requestId in inFlight,
                             onAccept = { viewModel.accept(request.requestId) },
                             onIgnore = { viewModel.ignore(request.requestId) }
                         )
@@ -122,6 +124,7 @@ fun RequestsScreen(
 @Composable
 private fun RequestItem(
     request: PendingRequestEntity,
+    isInFlight: Boolean = false,
     onAccept: () -> Unit,
     onIgnore: () -> Unit
 ) {
@@ -154,7 +157,9 @@ private fun RequestItem(
             Text(
                 text = request.displayName,
                 style = MaterialTheme.typography.labelLarge,
-                color = Color.White
+                color = Color.White,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
             )
             Text(
                 text = request.peerNostrKey.take(12) + "…",
@@ -167,6 +172,7 @@ private fun RequestItem(
 
         Button(
             onClick = onAccept,
+            enabled = !isInFlight,
             modifier = Modifier.height(38.dp),
             shape = RoundedCornerShape(12.dp),
             colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color(0xFF0A0A0A))
@@ -178,6 +184,7 @@ private fun RequestItem(
 
         OutlinedButton(
             onClick = onIgnore,
+            enabled = !isInFlight,
             modifier = Modifier.height(38.dp),
             shape = RoundedCornerShape(12.dp),
             colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0x73FFFFFF)),

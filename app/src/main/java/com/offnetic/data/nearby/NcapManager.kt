@@ -27,6 +27,7 @@ data class CallSignal(
 interface NcapManager {
     val peers: StateFlow<List<PeerInfo>>
     val nearbyState: StateFlow<NearbyState>
+    val isDiscovering: StateFlow<Boolean>
     val incomingMessages: SharedFlow<Message>
     val incomingCallSignals: SharedFlow<CallSignal>
     val incomingCallEvents: SharedFlow<String>

@@ -127,7 +127,7 @@ class ChatViewModel @Inject constructor(
 
     val messages: StateFlow<List<com.offnetic.domain.model.Message>> = messageDao.getMessagesForChat(contactPublicKey, 100, 0)
         .map { entities -> entities.map { com.offnetic.domain.model.Message.fromEntity(it) } }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     init {
         viewModelScope.launch {

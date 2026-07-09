@@ -84,6 +84,7 @@ fun ChatListContent(
     val chatSummaries by viewModel.chatSummaries.collectAsState()
     val profileDisplayName by viewModel.profileDisplayName.collectAsState()
     val pendingRequestCount by viewModel.pendingRequestCount.collectAsState()
+    val isDiscovering by viewModel.isDiscovering.collectAsState()
     var showProfileDialog by remember { mutableStateOf(false) }
 
     Column(
@@ -94,7 +95,7 @@ fun ChatListContent(
                 onRequests = onRequests,
                 onShutdown = onShutdown,
                 onShowProfile = { showProfileDialog = true },
-                isDiscovering = true,
+                isDiscovering = isDiscovering,
                 pendingRequestCount = pendingRequestCount
             )
 

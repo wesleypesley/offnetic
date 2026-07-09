@@ -33,7 +33,11 @@ class NetworkMonitor @Inject constructor(
     }
 
     init {
-        connectivityManager.registerDefaultNetworkCallback(callback)
+        try {
+            connectivityManager.registerDefaultNetworkCallback(callback)
+        } catch (e: Exception) {
+            Timber.e(e, "NetworkMonitor: failed to register network callback — connectivity state may be stale")
+        }
     }
 
     fun close() {
