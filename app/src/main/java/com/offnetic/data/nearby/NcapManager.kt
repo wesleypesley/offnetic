@@ -45,7 +45,8 @@ interface NcapManager {
     fun reconnectToContact(publicKey: String)
     suspend fun sendPayload(endpointId: String, payload: ByteArray)
     suspend fun sendFile(endpointId: String, fileUri: String, fileName: String, fileSize: Long, mimeType: String, durationLabel: String? = null)
-    suspend fun sendCallSignal(endpointId: String, payloadType: NcapEnvelope.PayloadType, payload: ByteArray)
+    /** Returns false if the signal could not be handed to the transport (#47). */
+    suspend fun sendCallSignal(endpointId: String, payloadType: NcapEnvelope.PayloadType, payload: ByteArray): Boolean
     fun getConnectedEndpointIds(publicKey: String): List<String>
     suspend fun sendReadReceipt(contactPublicKey: String, messageUuid: String)
     fun forceRestart(name: String)

@@ -1,69 +1,35 @@
-# Secp256k1 JNI — class names must match native library bindings
--keep class fr.acinq.secp256k1.** { *; }
--keepclassmembers class fr.acinq.secp256k1.** { *; }
+# JNI-bound libraries: class and member names are referenced from native code,
+# so they must survive shrinking and obfuscation. Everything else (Hilt, Room,
+# AndroidX, coroutines, GMS) ships consumer rules in its own AAR — no manual
+# keeps needed, and app code is covered by the rules KSP generates.
 
-# libsignal JNI bridge - CRITICAL
+# secp256k1 (fr.acinq JNI bindings)
+-keep class fr.acinq.secp256k1.** { *; }
+
+# libsignal — Native.java resolves Java classes/methods by name from Rust
 -keep class org.signal.libsignal.** { *; }
--keepclassmembers class org.signal.libsignal.** { *; }
 -dontwarn org.signal.libsignal.**
 
-# Own crypto layer - Hilt injects these
--keep class com.offnetic.data.crypto.** { *; }
--keep class com.offnetic.data.crypto.SignalProtocolStoreImpl { *; }
--keepclassmembers class com.offnetic.data.crypto.** { *; }
--keep class com.offnetic.data.nearby.** { *; }
--keep class com.offnetic.data.local.** { *; }
--keep class com.offnetic.data.repository.** { *; }
--keep class com.offnetic.domain.** { *; }
--keep class com.offnetic.di.** { *; }
--keep class com.offnetic.ui.** { *; }
--keep class com.offnetic.service.** { *; }
-
-# Hilt - must not be stripped
--keep class dagger.hilt.** { *; }
--keep class com.google.dagger.hilt.** { *; }
--keep class * extends dagger.hilt.android.internal.managers.ViewComponentManager$FragmentContextWrapper { *; }
--keep class * extends dagger.hilt.android.internal.managers.ActivityComponentManager { *; }
--keep class * extends dagger.hilt.android.internal.managers.ServiceComponentManager { *; }
--keepattributes *Annotation*
--keep class javax.inject.** { *; }
-
-# SQLCipher
+# SQLCipher JNI
 -keep class net.sqlcipher.** { *; }
 
-# DataStore
--keep class androidx.datastore.** { *; }
-
-# Nearby Connections
--keep class com.google.android.gms.nearby.** { *; }
-
-# WebRTC
+# WebRTC — native code invokes Java callbacks by name
 -keep class org.webrtc.** { *; }
 
-# CameraX
--keep class androidx.camera.** { *; }
-
-# ML Kit
--keep class com.google.mlkit.** { *; }
-
-# Biometric
--keep class androidx.biometric.** { *; }
-
-# Media3
--keep class androidx.media3.** { *; }
-
-# Timber
--keep class timber.log.** { *; }
-
-# Kotlin Coroutines
--keep class kotlinx.coroutines.** { *; }
-
-# Prevent obfuscation of Parcelable/Serializable
--keep class * implements android.os.Parcelable { *; }
--keep class * implements java.io.Serializable { *; }
-
-# Keep enum values
+# Room type converters call Enum.valueOf reflectively
 -keepclassmembers enum * {
     public static **[] values();
     public static ** valueOf(java.lang.String);
+}
+
+-keepattributes *Annotation*, Signature, InnerClasses, EnclosingMethod
+
+# Standard Serializable contract
+-keepclassmembers class * implements java.io.Serializable {
+    static final long serialVersionUID;
+    private static final java.io.ObjectStreamField[] serialPersistentFields;
+    private void writeObject(java.io.ObjectOutputStream);
+    private void readObject(java.io.ObjectInputStream);
+    java.lang.Object writeReplace();
+    java.lang.Object readResolve();
 }

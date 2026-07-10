@@ -24,6 +24,9 @@ interface RelayOutboxDao {
     @Query("UPDATE relay_outbox SET state = :state WHERE messageUuid = :messageUuid")
     suspend fun updateState(messageUuid: String, state: RelayOutboxState)
 
+    // Keeps only the newest :cap PENDING rows per chat: the subquery selects the
+    // keepers (newest by createdAt), the outer DELETE removes every other PENDING
+    // row for that chat (DB21)
     @Query(
         """
         DELETE FROM relay_outbox

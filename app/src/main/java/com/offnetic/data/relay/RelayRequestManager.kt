@@ -13,6 +13,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import timber.log.Timber
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
@@ -25,13 +27,18 @@ class RelayRequestManager @Inject constructor(
     private val signalProtocolManager: SignalProtocolManager,
     private val controlSender: RelayControlSender,
     private val identityDao: IdentityDao,
-    private val profileDao: ProfileDao
+    private val profileDao: ProfileDao,
+    private val relaySessionService: RelaySessionService
 ) {
     private val _inboundCount = MutableStateFlow(0)
     val inboundCount: StateFlow<Int> = _inboundCount.asStateFlow()
 
     private data class Attempt(val lastMs: Long, val count: Int)
     private val outboundAttempts = ConcurrentHashMap<String, Attempt>()
+
+    // Serializes republish passes — overlapping invocations both read the same
+    // Attempt snapshot and double-send the request (#42)
+    private val republishMutex = Mutex()
 
     suspend fun pendingRequests(): List<PendingRequestEntity> = pendingRequestDao.getInboundPending()
 
@@ -75,6 +82,12 @@ class RelayRequestManager @Inject constructor(
         if (sent) {
             pendingRequestDao.updateState(requestId, RequestState.ACCEPTED)
             Timber.d("acceptRequest: ACCEPTED ${request.peerOffneticKey.take(8)}")
+            // Mutual-request case: the accepter may already have queued messages for
+            // this peer — flush them now that the session exists (CR7)
+            if (signalProtocolManager.hasSession(request.peerOffneticKey)) {
+                runCatching { relaySessionService.onSessionReady(request.peerOffneticKey) }
+                    .onFailure { Timber.e(it, "acceptRequest: outbox flush failed for ${request.peerOffneticKey.take(8)}") }
+            }
         } else {
             Timber.w("acceptRequest: bundle send failed for ${request.peerNostrKey.take(8)} — keeping PENDING for retry")
         }
@@ -86,7 +99,7 @@ class RelayRequestManager @Inject constructor(
         refreshCount()
     }
 
-    suspend fun republishOutbound() {
+    suspend fun republishOutbound() = republishMutex.withLock {
         val now = System.currentTimeMillis()
         // Prune expired inbound requests so they don't accumulate forever (CR3)
         pendingRequestDao.deleteExpiredInbound(now)

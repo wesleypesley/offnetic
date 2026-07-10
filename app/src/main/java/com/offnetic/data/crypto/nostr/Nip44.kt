@@ -11,6 +11,9 @@ object Nip44 {
     private val SALT = "nip44-v2".toByteArray(Charsets.UTF_8)
 
     fun conversationKey(privateKeyA: ByteArray, publicKeyB: ByteArray): ByteArray {
+        // Lifting the x-only pubkey with an 0x02 (even-y) prefix is canonical NIP-44:
+        // the ECDH x-coordinate is invariant to the y parity of the input point
+        // (negation flips y only), so both sides always derive the same key.
         val compressedB = ByteArray(33)
         compressedB[0] = 0x02
         System.arraycopy(publicKeyB, 0, compressedB, 1, 32)

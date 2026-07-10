@@ -163,7 +163,12 @@ class NcapForegroundService : Service() {
         serviceScope.launch(Dispatchers.IO) {
             try {
                 relayPool.connect()
-                delay(5000)
+                // Wait for a live relay connection (bounded) instead of a blind sleep —
+                // subscribing before any socket is up loses the initial REQ until the
+                // 60s refresh (#60)
+                if (!relayPool.awaitConnected(10_000L)) {
+                    Timber.w("RelaySvc: no relay connected after 10s — subscribing anyway, refresh loop will recover")
+                }
 
                 val keyPair = nostrIdentityManager.getKeyPair() ?: return@launch
                 val myNpubHex = Hex.encode(keyPair.publicKey)

@@ -159,6 +159,10 @@ class WebRtcManager(
                 initDeferred.complete(Unit)
             } catch (e: Exception) {
                 Timber.e(e, "WebRTC initialization failed")
+                // Release the EglBase created before the factory failed — a retry
+                // creates a fresh one and the old native context would leak (#49)
+                eglBase?.release()
+                eglBase = null
                 initialized = false
                 initDeferred.completeExceptionally(e)
             }
@@ -176,6 +180,9 @@ class WebRtcManager(
     fun startCall(peerPublicKey: String, isVideo: Boolean, peerDisplayName: String) {
         android.util.Log.e("offCall", "startCall peer=${peerPublicKey.take(8)} video=$isVideo")
         ncapManager.setCallActive(true)
+        // A grace job from a previous DISCONNECTED episode would fire mid-call and
+        // tear down this new call's peer connection (#53)
+        disconnectGraceJobs.remove(peerPublicKey)?.cancel()
         iceCandidateCache.remove(peerPublicKey)
         pendingSdpOffers.remove(peerPublicKey)
         pendingOfferEndpoints.remove(peerPublicKey)
@@ -245,11 +252,18 @@ class WebRtcManager(
                                             put("sdp", sdp.description)
                                         }
                                         applyCachedAnswer(pc, peerPublicKey, state)
-                                        ncapManager.sendCallSignal(
+                                        val offerSent = ncapManager.sendCallSignal(
                                             endpointId,
                                             NcapEnvelope.PayloadType.CALL_OFFER,
                                             json.toString().toByteArray(Charsets.UTF_8)
                                         )
+                                        if (!offerSent) {
+                                            // Fail fast instead of letting the caller sit
+                                            // through the full 60s timeout (#47)
+                                            state.update { it.copy(phase = CallPhase.ENDED, error = "Couldn't reach peer") }
+                                            cleanupPeerConnection(peerPublicKey)
+                                            return@createOffer
+                                        }
                                         android.util.Log.e("offCall", "CALL_OFFER sent to $endpointId")
                                         injectP2pCandidate(endpointId, sdp.description)
                                     }
@@ -298,6 +312,7 @@ class WebRtcManager(
     fun acceptCall(peerPublicKey: String) {
         android.util.Log.e("offCall", "acceptCall peer=${peerPublicKey.take(8)}")
         ncapManager.setCallActive(true)
+        disconnectGraceJobs.remove(peerPublicKey)?.cancel()
         iceCandidateCache.remove(peerPublicKey)
         val state = getCallState(peerPublicKey)
         val isVideo = state.value.isVideo
@@ -358,6 +373,16 @@ class WebRtcManager(
             } else {
                 Timber.w("acceptCall: no cached SDP offer for ${peerPublicKey.take(8)}")
                 state.update { it.copy(phase = CallPhase.ENDED, error = "No SDP offer received") }
+                // Tell the remote side we can't proceed — otherwise it rings until
+                // its own timeout expires (#54)
+                when (transport) {
+                    CallTransport.RELAY -> contactDao.getByPublicKey(peerPublicKey)?.nostrPublicKey?.let { npub ->
+                        relayControlSender.sendCallSignal(npub, RelayControl.TYPE_CALL_HANGUP, "")
+                    }
+                    else -> if (endpointId.isNotEmpty()) {
+                        ncapManager.sendCallSignal(endpointId, NcapEnvelope.PayloadType.CALL_HANGUP, ByteArray(0))
+                    }
+                }
                 cleanupPeerConnection(peerPublicKey)
             }
         }
@@ -439,11 +464,16 @@ class WebRtcManager(
                                         put("type", sdp.type.canonicalForm())
                                         put("sdp", sdp.description)
                                     }
-                                    ncapManager.sendCallSignal(
+                                    val answerSent = ncapManager.sendCallSignal(
                                         endpointId,
                                         NcapEnvelope.PayloadType.CALL_ANSWER,
                                         json.toString().toByteArray(Charsets.UTF_8)
                                     )
+                                    if (!answerSent) {
+                                        state.update { it.copy(phase = CallPhase.ENDED, error = "Couldn't reach peer") }
+                                        cleanupPeerConnection(peerPublicKey)
+                                        return@launch
+                                    }
                                     android.util.Log.e("offCall", "CALL_ANSWER sent to $endpointId")
                                     injectP2pCandidate(endpointId, sdp.description)
                                     state.update { it.copy(phase = CallPhase.CONNECTING) }
@@ -526,7 +556,9 @@ class WebRtcManager(
 
         if (sdp.type == SessionDescription.Type.OFFER && sigState == PeerConnection.SignalingState.HAVE_LOCAL_OFFER) {
             android.util.Log.e("WebRTC_ICE", "onSdpReceived: stale PC in HAVE_LOCAL_OFFER — discarding and caching new offer")
-            peerConnections.remove(peerPublicKey)?.let { it.close(); it.dispose() }
+            // Full cleanup, not just PC disposal — the raw remove leaked the data
+            // channel, capturer, and audio/video sources of the abandoned call (#52)
+            cleanupPeerConnection(peerPublicKey)
             pendingSdpOffers[peerPublicKey] = sdp
             if (endpointId.isNotEmpty()) pendingOfferEndpoints[peerPublicKey] = endpointId
             state.update { it.copy(phase = CallPhase.INCOMING, error = "") }

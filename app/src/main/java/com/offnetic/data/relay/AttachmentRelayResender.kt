@@ -36,7 +36,15 @@ class AttachmentRelayResender @Inject constructor(
             val npub = contactDao.getByPublicKey(msg.chatId)?.nostrPublicKey ?: continue
             val path = msg.attachmentPath ?: continue
             val file = File(path)
-            if (!file.exists()) continue
+            if (!file.exists()) {
+                // The source file is gone — retrying forever can never succeed. Mark
+                // FAILED so the message leaves the unsent queue and the user sees it (#41)
+                Timber.w("AttachmentResender: file missing for ${msg.messageUuid.take(8)} (${path}) — marking FAILED")
+                messageDao.setDeliveryState(msg.messageUuid, com.offnetic.domain.model.MessageDeliveryState.FAILED.name)
+                backoffUntil.remove(msg.messageUuid)
+                attempts.remove(msg.messageUuid)
+                continue
+            }
             val mime = if (msg.type == Message.TYPE_VOICE_NOTE) "audio/mp4" else mimeFor(file.name)
             val sent = runCatching { blossomFileService.sendFile(npub, file, mime, msg.messageUuid, msg.content) }
                 .getOrElse { Timber.w(it, "AttachmentResender: send threw for ${msg.messageUuid.take(8)}"); false }

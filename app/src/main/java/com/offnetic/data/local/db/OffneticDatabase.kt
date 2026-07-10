@@ -54,8 +54,8 @@ import com.offnetic.data.local.db.entity.SignalSignedPreKeyEntity
         RelayStateEntity::class,
         NostrIdentityEntity::class
     ],
-    version = 10,
-    exportSchema = false
+    version = 11,
+    exportSchema = true
 )
 @TypeConverters(Converters::class)
 abstract class OffneticDatabase : RoomDatabase() {
@@ -84,6 +84,13 @@ abstract class OffneticDatabase : RoomDatabase() {
                 // Drop zombie custom Double-Ratchet sessions table; libsignal signal_sessions is the active store.
                 // This table was never written to and contains plaintext ratchet key columns.
                 db.execSQL("DROP TABLE IF EXISTS sessions")
+            }
+        }
+
+        val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Covers the MAX(id) GROUP BY chatId subquery in getChatSummaries (DB22)
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_messages_chatId_id ON messages(chatId, id)")
             }
         }
     }

@@ -38,6 +38,9 @@ class SignalProtocolStoreImpl @Inject constructor(
     private val signalIdentityDao: SignalIdentityDao
 ) : SignalProtocolStore {
 
+    // Refreshed by SignalProtocolManager.initialize() (called on every service start,
+    // under its init mutex) — a rotated identity is picked up on the next initialize,
+    // not silently served stale for the process lifetime (DB15)
     private var cachedIdentityKeyPair: IdentityKeyPair? = null
     private var cachedRegistrationId: Int? = null
 

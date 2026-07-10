@@ -8,6 +8,9 @@ import androidx.room.Update
 import com.offnetic.data.local.db.entity.Message
 import kotlinx.coroutines.flow.Flow
 
+// NOTE (DB14): several queries below embed MessageDeliveryState names as SQL string
+// literals ('SAVED', 'SENT_LOCAL', ...). Renaming an enum constant silently breaks
+// them — update these queries together with the enum.
 @Dao
 interface MessageDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -84,6 +87,9 @@ interface MessageDao {
 
     @Query("UPDATE messages SET deliveryState = 'SENT_RELAY' WHERE messageUuid = :messageUuid AND deliveryState = 'SAVED'")
     suspend fun markSentRelay(messageUuid: String)
+
+    @Query("UPDATE messages SET deliveryState = :state WHERE messageUuid = :messageUuid")
+    suspend fun setDeliveryState(messageUuid: String, state: String)
 }
 
 data class UnreadCountRow(

@@ -17,6 +17,7 @@ import com.offnetic.data.local.db.entity.CallHistoryEntity
 import com.offnetic.data.local.db.entity.Message
 import com.offnetic.data.local.db.entity.PendingRequestEntity
 import com.offnetic.data.local.db.entity.RequestDirection
+import com.offnetic.data.local.db.entity.RequestState
 import com.offnetic.data.nearby.WebRtcManager
 import com.offnetic.domain.model.MessageDeliveryState
 import com.offnetic.util.ActiveChatTracker
@@ -51,13 +52,23 @@ class RelayInboxHandler @Inject constructor(
 ) {
     private val rateLimit = ConcurrentHashMap<String, Long>()
     private val inFlightFiles = ConcurrentHashMap.newKeySet<String>()
+    private val inFlightMessages = ConcurrentHashMap.newKeySet<String>()
     private val fileScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     suspend fun handleGiftWrap(event: NostrEvent) {
         val myPriv = nostrIdentityManager.getKeyPair()?.privateKey ?: return
-        val result = runCatching { GiftWrap.unwrap(myPriv, event) }.getOrNull() ?: return
+        val result = runCatching { GiftWrap.unwrap(myPriv, event) }.getOrNull() ?: run {
+            Timber.w("Inbox: GiftWrap unwrap failed for event ${event.id.take(8)}")
+            return
+        }
         val rumor = result.rumor
         val senderNpub = Bech32.npub(Hex.decode(result.senderPubkey))
+        // Drop self-addressed events — replayed or reflected gift wraps must not
+        // create requests or messages from ourselves (CR9)
+        if (senderNpub == nostrIdentityManager.getNpub()) {
+            Timber.w("Inbox: dropped self-addressed event ${event.id.take(8)}")
+            return
+        }
         val type = RelayControl.typeOf(rumor)
         val uuid = rumor.tags.firstOrNull { it.size >= 2 && it[0] == "u" }?.get(1) ?: ""
 
@@ -80,7 +91,21 @@ class RelayInboxHandler @Inject constructor(
     }
 
     private suspend fun handleMessage(senderNpub: String, rumor: Rumor) {
-        val uuid = rumor.tags.firstOrNull { it.size >= 2 && it[0] == "u" }?.get(1) ?: return
+        val uuid = rumor.tags.firstOrNull { it.size >= 2 && it[0] == "u" }?.get(1) ?: run {
+            Timber.w("Inbox: message from ${senderNpub.take(8)} missing 'u' tag — dropped")
+            return
+        }
+        // Concurrent gift wraps carrying the same uuid both pass the DB dedup check
+        // below; the in-flight set closes that window (#30)
+        if (!inFlightMessages.add(uuid)) return
+        try {
+            handleMessageLocked(senderNpub, rumor, uuid)
+        } finally {
+            inFlightMessages.remove(uuid)
+        }
+    }
+
+    private suspend fun handleMessageLocked(senderNpub: String, rumor: Rumor, uuid: String) {
         val existing = messageDao.getByMessageUuid(uuid)
         if (existing != null) {
             relayControlSender.sendDeliveryAck(senderNpub, uuid)
@@ -89,12 +114,24 @@ class RelayInboxHandler @Inject constructor(
             return
         }
 
-        val contact = contactDao.getByNostrPublicKey(senderNpub) ?: return
+        val contact = contactDao.getByNostrPublicKey(senderNpub) ?: run {
+            Timber.w("Inbox uuid=${uuid.take(8)}: no contact for ${senderNpub.take(8)} — dropped")
+            return
+        }
 
-        val ciphertext = runCatching { Base64.getDecoder().decode(rumor.content) }.getOrNull() ?: return
-        val plaintext = signalProtocolManager.decryptMessage(contact.publicKey, ciphertext) ?: return
+        val ciphertext = runCatching { Base64.getDecoder().decode(rumor.content) }.getOrNull() ?: run {
+            Timber.w("Inbox uuid=${uuid.take(8)}: Base64 decode failed — dropped")
+            return
+        }
+        val plaintext = signalProtocolManager.decryptMessage(contact.publicKey, ciphertext) ?: run {
+            Timber.w("Inbox uuid=${uuid.take(8)}: decryption failed for ${contact.publicKey.take(8)} — dropped")
+            return
+        }
 
-        val json = runCatching { JSONObject(String(plaintext, Charsets.UTF_8)) }.getOrNull() ?: return
+        val json = runCatching { JSONObject(String(plaintext, Charsets.UTF_8)) }.getOrNull() ?: run {
+            Timber.w("Inbox uuid=${uuid.take(8)}: plaintext is not valid JSON — dropped")
+            return
+        }
         val content = json.optString("content", "")
         if (content.isEmpty()) return
         val timestamp = json.optLong("timestamp", System.currentTimeMillis())
@@ -125,9 +162,25 @@ class RelayInboxHandler @Inject constructor(
         if (isRateLimited(senderNpub)) return
         if (contactDao.getByNostrPublicKey(senderNpub) != null) return
 
-        val json = runCatching { JSONObject(rumor.content) }.getOrNull() ?: return
+        // A row the user ignored stays EXPIRED until its TTL prunes it; a republished
+        // request must not resurrect it via upsert/REPLACE (CR2)
+        val existing = pendingRequestDao.getById(senderNpub)
+        if (existing != null && existing.state == RequestState.EXPIRED) {
+            Timber.d("Inbox: request from ignored sender ${senderNpub.take(8)} — dropped")
+            return
+        }
+
+        val json = runCatching { JSONObject(rumor.content) }.getOrNull() ?: run {
+            Timber.w("Inbox: request from ${senderNpub.take(8)} has invalid JSON — dropped")
+            return
+        }
         val peerOffneticKey = json.optString("pk", "")
         if (peerOffneticKey.isEmpty()) return
+        // A request claiming our own identity key is a replay or spoof (CR9)
+        if (peerOffneticKey == identityDao.getIdentity()?.publicKey) {
+            Timber.w("Inbox: request from ${senderNpub.take(8)} claims own identity key — dropped")
+            return
+        }
         val displayName = json.optString("name", peerOffneticKey.take(12))
 
         val bundleBytes = json.optString("bundle").takeIf { it.isNotEmpty() }?.let {
@@ -152,8 +205,14 @@ class RelayInboxHandler @Inject constructor(
 
     private suspend fun handleBundle(senderNpub: String, rumor: Rumor) {
         if (isRateLimited(senderNpub)) return
-        val contact = contactDao.getByNostrPublicKey(senderNpub) ?: return
-        val bundle = runCatching { Base64.getDecoder().decode(rumor.content) }.getOrNull() ?: return
+        val contact = contactDao.getByNostrPublicKey(senderNpub) ?: run {
+            Timber.w("Inbox: bundle from unknown sender ${senderNpub.take(8)} — dropped")
+            return
+        }
+        val bundle = runCatching { Base64.getDecoder().decode(rumor.content) }.getOrNull() ?: run {
+            Timber.w("Inbox: bundle from ${senderNpub.take(8)} failed Base64 decode — dropped")
+            return
+        }
         val ok = runCatching {
             signalProtocolManager.processBundleAndCreateSession(contact.publicKey, bundle)
         }.isSuccess
@@ -243,9 +302,21 @@ class RelayInboxHandler @Inject constructor(
     }
 
     private fun isRateLimited(npub: String, now: Long = System.currentTimeMillis()): Boolean {
-        val last = rateLimit[npub]
-        if (last != null && now - last < COOLDOWN_MS) return true
-        rateLimit[npub] = now
-        return false
+        // compute() makes the read-check-write atomic; the previous get/put pair let
+        // two concurrent events from the same sender both pass (#29)
+        var limited = true
+        rateLimit.compute(npub) { _, last ->
+            if (last != null && now - last < COOLDOWN_MS) {
+                last
+            } else {
+                limited = false
+                now
+            }
+        }
+        // Opportunistic prune keeps the map from growing unboundedly across many senders
+        if (rateLimit.size > 512) {
+            rateLimit.entries.removeIf { now - it.value >= COOLDOWN_MS }
+        }
+        return limited
     }
 }

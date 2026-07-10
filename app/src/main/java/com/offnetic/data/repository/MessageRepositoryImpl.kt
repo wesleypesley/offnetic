@@ -4,6 +4,7 @@ import com.offnetic.data.local.db.dao.MessageDao
 import com.offnetic.domain.model.Message
 import com.offnetic.domain.model.Result
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -30,12 +31,18 @@ class MessageRepositoryImpl @Inject constructor(
 
     override fun getMessagesForChat(chatId: String, limit: Int, offset: Int): Flow<Result<List<Message>>> {
         return messageDao.getMessagesForChat(chatId, limit, offset)
-            .map { Result.Success(it.map { Message.fromEntity(it) }) }
+            .map<List<com.offnetic.data.local.db.entity.Message>, Result<List<Message>>> { entities ->
+                Result.Success(entities.map { Message.fromEntity(it) })
+            }
+            .catch { emit(Result.Error("Failed to observe messages", it)) }
     }
 
     override fun getMessagesBefore(chatId: String, beforeId: Long, limit: Int): Flow<Result<List<Message>>> {
         return messageDao.getMessagesBefore(chatId, beforeId, limit)
-            .map { Result.Success(it.map { Message.fromEntity(it) }) }
+            .map<List<com.offnetic.data.local.db.entity.Message>, Result<List<Message>>> { entities ->
+                Result.Success(entities.map { Message.fromEntity(it) })
+            }
+            .catch { emit(Result.Error("Failed to observe older messages", it)) }
     }
 
     override suspend fun getById(id: Long): Result<Message?> {

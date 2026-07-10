@@ -20,9 +20,11 @@ interface SignalSessionDao {
     @Query("DELETE FROM signal_sessions WHERE address = :address")
     suspend fun delete(address: String)
 
-    @Query("DELETE FROM signal_sessions WHERE address LIKE :name || ':%'")
+    // Exact prefix match via substr — LIKE would treat '_' in base64url public keys
+    // as a single-character wildcard and could match other peers' addresses (DB16)
+    @Query("DELETE FROM signal_sessions WHERE substr(address, 1, length(:name) + 1) = :name || ':'")
     suspend fun deleteAll(name: String)
 
-    @Query("SELECT address FROM signal_sessions WHERE address LIKE :name || ':%'")
+    @Query("SELECT address FROM signal_sessions WHERE substr(address, 1, length(:name) + 1) = :name || ':'")
     suspend fun getSubDeviceSessions(name: String): List<String>
 }

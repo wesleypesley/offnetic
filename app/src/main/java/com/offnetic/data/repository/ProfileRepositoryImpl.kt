@@ -4,6 +4,7 @@ import com.offnetic.data.local.db.dao.ProfileDao
 import com.offnetic.domain.model.Profile
 import com.offnetic.domain.model.Result
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -27,11 +28,18 @@ class ProfileRepositoryImpl @Inject constructor(
 
     override fun getByPublicKeyFlow(publicKey: String): Flow<Result<Profile?>> {
         return profileDao.getByPublicKeyFlow(publicKey)
-            .map { Result.Success(it?.let { Profile.fromEntity(it) }) }
+            .map<com.offnetic.data.local.db.entity.Profile?, Result<Profile?>> { entity ->
+                Result.Success(entity?.let { Profile.fromEntity(it) })
+            }
+            .catch { emit(Result.Error("Failed to observe profile", it)) }
     }
 
     override fun getAll(): Flow<Result<List<Profile>>> {
-        return profileDao.getAll().map { Result.Success(it.map { Profile.fromEntity(it) }) }
+        return profileDao.getAll()
+            .map<List<com.offnetic.data.local.db.entity.Profile>, Result<List<Profile>>> { entities ->
+                Result.Success(entities.map { Profile.fromEntity(it) })
+            }
+            .catch { emit(Result.Error("Failed to observe profiles", it)) }
     }
 
     override suspend fun delete(publicKey: String): Result<Unit> {

@@ -4,6 +4,7 @@ import com.offnetic.data.local.db.dao.ContactDao
 import com.offnetic.domain.model.Contact
 import com.offnetic.domain.model.Result
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -31,11 +32,19 @@ class ContactRepositoryImpl @Inject constructor(
     }
 
     override fun getAll(): Flow<Result<List<Contact>>> {
-        return contactDao.getAll().map { Result.Success(it.map { Contact.fromEntity(it) }) }
+        return contactDao.getAll()
+            .map<List<com.offnetic.data.local.db.entity.Contact>, Result<List<Contact>>> { entities ->
+                Result.Success(entities.map { Contact.fromEntity(it) })
+            }
+            .catch { emit(Result.Error("Failed to observe contacts", it)) }
     }
 
     override fun getVerifiedContacts(): Flow<Result<List<Contact>>> {
-        return contactDao.getVerifiedContacts().map { Result.Success(it.map { Contact.fromEntity(it) }) }
+        return contactDao.getVerifiedContacts()
+            .map<List<com.offnetic.data.local.db.entity.Contact>, Result<List<Contact>>> { entities ->
+                Result.Success(entities.map { Contact.fromEntity(it) })
+            }
+            .catch { emit(Result.Error("Failed to observe verified contacts", it)) }
     }
 
     override suspend fun getVerifiedByPublicKey(publicKey: String): Result<Contact?> {

@@ -6,7 +6,10 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.OkHttpClient
 import timber.log.Timber
 
@@ -40,13 +43,33 @@ class RelayPool(
                                 if (deduper.markSeen(msg.event.id)) _events.emit(msg.event)
                             is RelayMessage.Ok ->
                                 _acks.emit(OkAck(msg.eventId, msg.accepted, conn.url))
-                            else -> Unit
+                            // Protocol-level feedback was silently discarded — relays use
+                            // NOTICE/CLOSED to report rejections and errors (#38)
+                            is RelayMessage.Notice ->
+                                Timber.w("Relay NOTICE from ${conn.url}: ${msg.message}")
+                            is RelayMessage.Closed ->
+                                Timber.w("Relay CLOSED sub=${msg.subscriptionId} from ${conn.url}: ${msg.message}")
+                            is RelayMessage.Eose ->
+                                Timber.d("Relay EOSE sub=${msg.subscriptionId} from ${conn.url}")
+                            is RelayMessage.Unknown ->
+                                Timber.w("Relay unparseable message from ${conn.url}: ${msg.raw.take(120)}")
                         }
                     }
                 }
             }
         }
     }
+
+    /**
+     * Suspends until at least one relay reports CONNECTED, or [timeoutMs] elapses.
+     * Returns false on timeout so callers can log instead of subscribing blind (#60).
+     */
+    suspend fun awaitConnected(timeoutMs: Long): Boolean =
+        withTimeoutOrNull(timeoutMs) {
+            combine(connections.map { it.state }) { states ->
+                states.any { it == RelayConnectionState.CONNECTED }
+            }.first { it }
+        } ?: false
 
     fun publish(event: NostrEvent): Int {
         val text = RelayMessage.event(event)

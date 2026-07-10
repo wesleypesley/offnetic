@@ -9,6 +9,7 @@ import com.offnetic.domain.model.MessageDeliveryState
     tableName = "messages",
     indices = [
         Index(value = ["chatId", "timestamp"]),
+        Index(value = ["chatId", "id"]),
         Index(value = ["sessionId"]),
         Index(value = ["messageUuid"], unique = true)
     ]

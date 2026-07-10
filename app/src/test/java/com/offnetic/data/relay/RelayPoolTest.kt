@@ -7,8 +7,8 @@ import com.offnetic.data.crypto.nostr.NostrEventSigner
 import com.offnetic.data.crypto.nostr.NostrJson
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -27,7 +27,7 @@ class FakeRelayConnection(override val url: String) : RelayConnection {
     private val _state = MutableStateFlow(RelayConnectionState.DISCONNECTED)
     override val state: StateFlow<RelayConnectionState> = _state
     private val _incoming = MutableSharedFlow<String>(extraBufferCapacity = 64)
-    override val incoming: Flow<String> = _incoming
+    override val incoming: SharedFlow<String> = _incoming
 
     override fun connect() { _state.value = RelayConnectionState.CONNECTED }
     override fun send(text: String): Boolean { sent.add(text); return connected }

@@ -47,8 +47,15 @@ class CallViewModel @AssistedInject constructor(
 
     private val internalScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
-    private val callStateFlow = webRtcManager.getCallState(peerPublicKey)
+    // Resolved through the manager on every access so this VM can never hold a
+    // stale flow instance if the manager's state map is rebuilt (#21)
+    private val callStateFlow: MutableStateFlow<CallState>
+        get() = webRtcManager.getCallState(peerPublicKey)
     val callState: StateFlow<CallState> = callStateFlow.asStateFlow()
+
+    // Both startOutgoingCall and acceptIncomingCall route here; without the guard a
+    // second invocation doubles every collector and duplicates call-history rows (#20)
+    private val observing = java.util.concurrent.atomic.AtomicBoolean(false)
 
     private val _callDuration = MutableStateFlow("")
     val callDuration: StateFlow<String> = _callDuration.asStateFlow()
@@ -95,15 +102,16 @@ class CallViewModel @AssistedInject constructor(
     }
 
     private fun observeCallSignals() {
-        var prevPhase = callStateFlow.value.phase
-        android.util.Log.e("offCall", "observeCallSignals starting prevPhase=$prevPhase")
-
         val pendingOffer = WebRtcManager.pendingIncomingOffers.remove(peerPublicKey)
         if (pendingOffer != null) {
             val (sdpJson, endpointId) = pendingOffer
             android.util.Log.e("offCall", "observeCallSignals applying cached CALL_OFFER for ${peerPublicKey.take(8)}")
             webRtcManager.onSdpReceived(peerPublicKey, sdpJson, endpointId)
         }
+
+        if (!observing.compareAndSet(false, true)) return
+        var prevPhase = callStateFlow.value.phase
+        android.util.Log.e("offCall", "observeCallSignals starting prevPhase=$prevPhase")
 
         internalScope.launch {
             callStateFlow.collect { state ->

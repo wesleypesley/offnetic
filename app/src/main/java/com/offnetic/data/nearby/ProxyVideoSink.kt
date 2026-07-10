@@ -9,6 +9,9 @@ class ProxyVideoSink : VideoSink {
 
     @Synchronized
     override fun onFrame(frame: VideoFrame) {
+        // No manual release needed: sinks registered via VideoTrack.addSink do not own
+        // the frame — the native track releases it after onFrame returns. Dropping the
+        // frame when target is null is the same pattern as AppRTC's ProxyVideoSink.
         target?.onFrame(frame)
     }
 

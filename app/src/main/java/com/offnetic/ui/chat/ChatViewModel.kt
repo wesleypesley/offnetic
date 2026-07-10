@@ -241,7 +241,7 @@ class ChatViewModel @Inject constructor(
                     }
                     Timber.d("File sent via NCAPI to ${contactPublicKey.take(8)}")
                     withContext(Dispatchers.IO) { file.delete() }
-                } else if (reachability.value == ChatReachability.INTERNET_RELAY) {
+                } else if (currentReachability() == ChatReachability.INTERNET_RELAY) {
                     if (file.length() == 0L) { _toastMessage.emit("Empty file"); return@launch }
                     val npub = contactDao.getByPublicKey(contactPublicKey)?.nostrPublicKey
                         ?: run { _toastMessage.emit("${_contactName.value} not reachable — file saved"); return@launch }
@@ -308,7 +308,7 @@ class ChatViewModel @Inject constructor(
                             Timber.e(e, "Voice note send failed")
                             _toastMessage.emit("Voice note send failed — saved")
                         }
-                    } else if (reachability.value == ChatReachability.INTERNET_RELAY) {
+                    } else if (currentReachability() == ChatReachability.INTERNET_RELAY) {
                         val npub = contactDao.getByPublicKey(contactPublicKey)?.nostrPublicKey
                             ?: run { _toastMessage.emit("${_contactName.value} not reachable — voice note saved"); return@launch }
                         val sent = withContext(Dispatchers.IO) { blossomFileService.sendFile(npub, file, "audio/mp4", entity.messageUuid, entity.content) }
@@ -363,6 +363,18 @@ class ChatViewModel @Inject constructor(
     }
 
     private val connectingToastShown = AtomicBoolean(false)
+    private val connectionRequestInFlight = AtomicBoolean(false)
+
+    // Reachability computed from the always-hot source flows at the moment of use.
+    // The stateIn'd `reachability` uses WhileSubscribed and can hold a stale snapshot
+    // between UI subscriptions (#79).
+    private suspend fun currentReachability(): ChatReachability =
+        ChatReachability.forPeer(
+            contactPublicKey = contactPublicKey,
+            peers = ncapManager.peers.value,
+            online = networkMonitor.isOnline.value,
+            relayEligible = contactDao.getByPublicKey(contactPublicKey)?.nostrPublicKey != null
+        )
 
     private fun sendEncrypted(plaintext: ByteArray, type: Int, content: String) {
         Timber.d("sendEncrypted: type=$type, size=${plaintext.size}, peer=${contactPublicKey.take(8)}...")
@@ -391,22 +403,36 @@ class ChatViewModel @Inject constructor(
                     val contact = contactDao.getByPublicKey(contactPublicKey)
                     val nostrPub = contact?.nostrPublicKey
                     if (nostrPub != null) {
-                        val bundle = signalProtocolManager.buildPreKeyBundleBytes()
-                        val myName = profileDao.getByPublicKey(myPublicKey)?.displayName ?: myPublicKey.take(12) + "..."
+                        // Only one connection request per no-session episode: concurrent or
+                        // rapid sequential sends must not spam the peer with different
+                        // bundles — republishing is RelayRequestManager's job (#24)
+                        val requestId = RelayRequestManager.OUTBOUND_PREFIX + nostrPub
                         val now = System.currentTimeMillis()
-                        pendingRequestDao.upsert(
-                            PendingRequestEntity(
-                                requestId = RelayRequestManager.OUTBOUND_PREFIX + nostrPub,
-                                direction = RequestDirection.OUTBOUND,
-                                peerOffneticKey = contactPublicKey,
-                                peerNostrKey = nostrPub,
-                                displayName = contact.displayName,
-                                createdAt = now,
-                                expiresAt = now + CONNECTION_REQUEST_TTL_MS
-                            )
-                        )
-                        relayControlSender.sendConnectionRequest(nostrPub, myPublicKey, myName, bundle)
-                        Timber.d("sendEncrypted: uuid=${entity.messageUuid.take(8)} no session — sent connection request + tracked outbound")
+                        val existing = pendingRequestDao.getById(requestId)
+                        val alreadyPending = existing != null &&
+                            existing.state == com.offnetic.data.local.db.entity.RequestState.PENDING &&
+                            now < existing.expiresAt
+                        if (!alreadyPending && connectionRequestInFlight.compareAndSet(false, true)) {
+                            try {
+                                val bundle = signalProtocolManager.buildPreKeyBundleBytes()
+                                val myName = profileDao.getByPublicKey(myPublicKey)?.displayName ?: myPublicKey.take(12) + "..."
+                                pendingRequestDao.upsert(
+                                    PendingRequestEntity(
+                                        requestId = requestId,
+                                        direction = RequestDirection.OUTBOUND,
+                                        peerOffneticKey = contactPublicKey,
+                                        peerNostrKey = nostrPub,
+                                        displayName = contact.displayName,
+                                        createdAt = now,
+                                        expiresAt = now + CONNECTION_REQUEST_TTL_MS
+                                    )
+                                )
+                                relayControlSender.sendConnectionRequest(nostrPub, myPublicKey, myName, bundle)
+                                Timber.d("sendEncrypted: uuid=${entity.messageUuid.take(8)} no session — sent connection request + tracked outbound")
+                            } finally {
+                                connectionRequestInFlight.set(false)
+                            }
+                        }
                         if (connectingToastShown.compareAndSet(false, true)) {
                             _toastMessage.emit("${_contactName.value} not nearby — connecting over the internet")
                         }
@@ -580,6 +606,10 @@ class ChatViewModel @Inject constructor(
 
     override fun onCleared() {
         super.onCleared()
+        // Last-resort release: normally ChatScreen's DisposableEffect clears this,
+        // but if the VM dies without that firing, a stale key would suppress
+        // notifications for this chat forever (#85)
+        activeChatTracker.clearIfActive(contactPublicKey)
         if (voiceNoteRecorder.isRecording) {
             voiceNoteRecorder.cancelRecording()
         }
@@ -599,7 +629,10 @@ class ChatViewModel @Inject constructor(
                     }
                 }
             }
-            catch (e: Exception) { Timber.e(e, "deleteMessage failed") }
+            catch (e: Exception) {
+                Timber.e(e, "deleteMessage failed")
+                _toastMessage.emit("Couldn't delete message")
+            }
         }
     }
 
@@ -616,7 +649,10 @@ class ChatViewModel @Inject constructor(
                         attachmentPath = msg.attachmentPath, attachmentType = msg.attachmentType
                     )
                 )
-            } catch (e: Exception) { Timber.e(e, "cancelMessage failed") }
+            } catch (e: Exception) {
+                Timber.e(e, "cancelMessage failed")
+                _toastMessage.emit("Couldn't cancel message")
+            }
         }
     }
 
@@ -653,7 +689,7 @@ class ChatViewModel @Inject constructor(
                             else mimeTypeFor(file.name)
                         ncapManager.sendFile(connected.first(), path, file.name, file.length(), mime)
                         messageDao.update(entity.copy(deliveryState = MessageDeliveryState.SENT_LOCAL))
-                    } else if (reachability.value == ChatReachability.INTERNET_RELAY) {
+                    } else if (currentReachability() == ChatReachability.INTERNET_RELAY) {
                         val npub = contactDao.getByPublicKey(contactPublicKey)?.nostrPublicKey
                             ?: run { _toastMessage.emit("${_contactName.value} not reachable — saved"); return@launch }
                         val file = java.io.File(path)

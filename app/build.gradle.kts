@@ -8,6 +8,11 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+// Room writes versioned schema JSON here so migrations are reviewable and testable (O22)
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 android {
     namespace = "com.offnetic"
     compileSdk = 35

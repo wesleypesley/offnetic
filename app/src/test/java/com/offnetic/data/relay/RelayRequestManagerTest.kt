@@ -47,8 +47,9 @@ class RelayRequestManagerTest {
         pending = db.pendingRequestDao()
         contacts = db.contactDao()
         signal = mockk()
+        coEvery { signal.hasSession(any(), any()) } returns false
         controlSender = mockk(relaxed = true)
-        manager = RelayRequestManager(pending, contacts, signal, controlSender, db.identityDao(), db.profileDao())
+        manager = RelayRequestManager(pending, contacts, signal, controlSender, db.identityDao(), db.profileDao(), mockk(relaxed = true))
 
         val alicePriv = GiftWrap.generateEphemeralKey()
         aliceNpub = Bech32.npub(Secp256k1.pubkeyCreate(alicePriv).copyOfRange(1, 33))

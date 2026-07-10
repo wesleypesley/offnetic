@@ -663,19 +663,24 @@ class NcapManagerImpl @Inject constructor(
         endpointId: String,
         payloadType: NcapEnvelope.PayloadType,
         payload: ByteArray
-    ) {
+    ): Boolean {
         val identity = identityDao.getIdentity()
-        val myPublicKey = identity?.publicKey ?: return
+        val myPublicKey = identity?.publicKey ?: run {
+            Timber.w("sendCallSignal: no local identity — $payloadType dropped")
+            return false
+        }
 
         val envelope = NcapEnvelope.Plain(
             senderPublicKey = myPublicKey,
             payloadType = payloadType,
             payload = payload
         )
-        try {
+        return try {
             sendPayload(endpointId, envelope.toBytes())
+            true
         } catch (e: Exception) {
             Timber.w(e, "sendCallSignal: $payloadType failed to $endpointId")
+            false
         }
     }
 

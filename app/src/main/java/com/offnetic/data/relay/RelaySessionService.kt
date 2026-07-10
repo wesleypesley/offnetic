@@ -51,13 +51,16 @@ class RelaySessionService @Inject constructor(
         // previously left messages marked SENT_RELAY without a corresponding outbox row.
         database.withTransaction {
             val now = System.currentTimeMillis()
+            var seq = 0L
             for ((msg, ciphertext) in encrypted) {
                 relayOutboxDao.upsert(
                     RelayOutboxEntity(
                         messageUuid = msg.messageUuid,
                         chatId = contactPublicKey,
                         ciphertext = ciphertext,
-                        createdAt = now,
+                        // Strictly increasing createdAt keeps eviction order deterministic;
+                        // identical timestamps made evictOldestPending arbitrary (#73)
+                        createdAt = now + seq++,
                         expiresAt = now + RELAY_OUTBOX_TTL_MS
                     )
                 )

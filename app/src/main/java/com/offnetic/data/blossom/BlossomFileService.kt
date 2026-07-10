@@ -46,7 +46,14 @@ class BlossomFileService @Inject constructor(
                     put("content", content)
                     put("servers", JSONArray(servers))
                 }
-                relayControlSender.sendFileBlossom(npub, payload.toString(), messageUuid)
+                val announced = relayControlSender.sendFileBlossom(npub, payload.toString(), messageUuid)
+                if (!announced) {
+                    // The blob is uploaded but unannounced — unreachable ciphertext that
+                    // only the servers' retention policy will clean up. Log it so orphans
+                    // are at least observable (#70); deleting needs BUD-02 signed auth.
+                    Timber.w("BlossomFileService: announcement failed — orphaned blob sha256=${sealed.sha256Hex.take(16)} on ${servers.size} server(s)")
+                }
+                announced
             } finally {
                 sealed.ciphertext.delete()
             }
@@ -60,6 +67,12 @@ class BlossomFileService @Inject constructor(
         name: String,
         expectedSize: Long
     ): File? = withContext(Dispatchers.IO) {
+        // Sender-claimed size is untrusted: refuse oversized claims outright instead of
+        // streaming up to the global cap before failing (#71)
+        if (expectedSize > MAX_DOWNLOAD_BYTES) {
+            Timber.w("BlossomFileService: claimed size $expectedSize exceeds cap — refused ${sha256.take(8)}")
+            return@withContext null
+        }
         val cap = if (expectedSize > 0) minOf(expectedSize + CIPHERTEXT_OVERHEAD, MAX_DOWNLOAD_BYTES) else MAX_DOWNLOAD_BYTES
         val temp = blossomClient.download(servers, sha256, context.cacheDir, cap) ?: return@withContext null
         try {
