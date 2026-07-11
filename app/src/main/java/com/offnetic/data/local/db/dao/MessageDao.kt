@@ -55,6 +55,9 @@ interface MessageDao {
     @Query("SELECT messageUuid FROM messages WHERE chatId = :chatId AND isRead = 0 AND senderPublicKey != :myPublicKey")
     suspend fun getUnreadIncomingUuids(chatId: String, myPublicKey: String): List<String>
 
+    @Query("UPDATE messages SET isRead = 1 WHERE messageUuid IN (:uuids)")
+    suspend fun markUuidsAsRead(uuids: List<String>)
+
     @Query("SELECT * FROM messages WHERE chatId = :chatId AND deliveryState = 'SAVED' AND senderPublicKey = :myPublicKey ORDER BY timestamp ASC")
     suspend fun getUnsentMessagesForChat(chatId: String, myPublicKey: String): List<Message>
 

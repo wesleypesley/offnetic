@@ -59,6 +59,7 @@
     <string name="profile_setup_username_label">USERNAME</string>
     <string name="profile_setup_placeholder">Enter a username</string>
     <string name="profile_setup_invalid">Only letters, numbers, and underscores</string>
+    <string name="profile_setup_reserved">This name is reserved — pick another</string>
     <string name="profile_setup_rules">Letters, numbers, and underscores only</string>
     <string name="profile_setup_permanent">⚠ This cannot be changed later.</string>
     <string name="profile_setup_enter">Enter Offnetic</string>
@@ -79,6 +80,8 @@
     <!-- Connection requests -->
     <string name="requests_title">Connection Requests</string>
     <string name="requests_empty">No pending connection requests</string>
+    <string name="requests_unverified">Unverified</string>
+    <string name="requests_name_hint">Name is provided by the sender — verify the key before trusting it</string>
 
     <!-- Chat -->
     <string name="chat_empty">No messages yet — say hello</string>

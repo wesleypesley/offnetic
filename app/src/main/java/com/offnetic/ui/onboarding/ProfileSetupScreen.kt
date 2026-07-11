@@ -35,6 +35,12 @@ import com.offnetic.ui.theme.Spacing
 private val USERNAME_REGEX = Regex("^[a-zA-Z0-9_]{2,24}$")
 private const val USERNAME_MAX_LENGTH = 24
 
+// Names that could impersonate the app or authority figures in a request list (O18)
+private val RESERVED_USERNAMES = setOf(
+    "admin", "administrator", "offnetic", "official", "system",
+    "support", "help", "root", "moderator", "mod", "staff"
+)
+
 @Composable
 fun ProfileSetupScreen(
     onDone: () -> Unit = {}
@@ -44,7 +50,8 @@ fun ProfileSetupScreen(
     val saveState by viewModel.saveState.collectAsState()
 
     val trimmed = username.trim()
-    val isValid = trimmed.matches(USERNAME_REGEX)
+    val isReserved = trimmed.lowercase() in RESERVED_USERNAMES
+    val isValid = trimmed.matches(USERNAME_REGEX) && !isReserved
     val hasContent = trimmed.length >= 2
     val showError = hasContent && !isValid
     val saving = saveState == ProfileSaveState.Saving
@@ -131,7 +138,10 @@ fun ProfileSetupScreen(
                     Column {
                         if (showError) {
                             Text(
-                                text = stringResource(R.string.profile_setup_invalid),
+                                text = stringResource(
+                                    if (isReserved) R.string.profile_setup_reserved
+                                    else R.string.profile_setup_invalid
+                                ),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = OffneticColors.danger
                             )

@@ -1,3 +1,4 @@
+import java.io.File
 import java.util.Properties
 
 plugins {
@@ -28,6 +29,8 @@ android {
         ndk {
             abiFilters += listOf("arm64-v8a")
         }
+        // x86_64 is added for debug only (below) so emulators work without
+        // bloating the release APK (O15)
     }
 
     buildFeatures { compose = true }
@@ -81,14 +84,32 @@ android {
             )
             signingConfig = signingConfigs.getByName("release")
         }
-        debug { isMinifyEnabled = false; isDebuggable = true }
+        debug {
+            isMinifyEnabled = false
+            isDebuggable = true
+            ndk { abiFilters += "x86_64" }
+        }
     }
 }
 
 tasks.matching { it.name == "mergeReleaseNativeLibs" }.configureEach {
     doLast {
-        val stripExe = file("${android.sdkDirectory}/ndk/28.2.13676358/toolchains/llvm/prebuilt/windows-x86_64/bin/llvm-strip.exe")
-        if (!stripExe.exists()) return@doLast
+        // Discover the newest installed NDK and the host toolchain instead of pinning
+        // a version and Windows-only path — a pinned path breaks on CI, other machines,
+        // and every NDK update (H2)
+        val osName = System.getProperty("os.name").lowercase()
+        val hostTag = when {
+            osName.contains("windows") -> "windows-x86_64"
+            osName.contains("mac") -> "darwin-x86_64"
+            else -> "linux-x86_64"
+        }
+        val exeName = if (osName.contains("windows")) "llvm-strip.exe" else "llvm-strip"
+        val ndkRoot = file("${android.sdkDirectory}/ndk")
+        val stripExe = ndkRoot.listFiles()
+            ?.sortedByDescending { it.name }
+            ?.map { File(it, "toolchains/llvm/prebuilt/$hostTag/bin/$exeName") }
+            ?.firstOrNull { it.exists() }
+            ?: return@doLast
         val libDir = file("${layout.buildDirectory.get()}/intermediates/merged_native_libs/release/mergeReleaseNativeLibs/out/lib")
         val abis = listOf("arm64-v8a")
         abis.forEach { abi ->

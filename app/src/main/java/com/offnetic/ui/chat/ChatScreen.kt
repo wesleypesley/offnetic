@@ -97,6 +97,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.offnetic.domain.model.ChatReachability
 import com.offnetic.domain.model.Message
 import com.offnetic.domain.model.MessageDeliveryState
+import com.offnetic.ui.theme.OffneticColors
 import com.offnetic.ui.theme.Spacing
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -175,7 +176,7 @@ fun ChatScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF0A0A0A))
+            .background(MaterialTheme.colorScheme.background)
             .imePadding()
             .windowInsetsPadding(WindowInsets.navigationBars)
             .statusBarsPadding()
@@ -201,7 +202,7 @@ fun ChatScreen(
                     Text(
                         text = stringResource(R.string.chat_empty),
                         style = MaterialTheme.typography.bodyMedium,
-                        color = Color(0x40FFFFFF)
+                        color = OffneticColors.textHint
                     )
                 }
             } else {
@@ -257,7 +258,7 @@ private fun ChatHeader(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = Color(0xE60A0A0A)
+        color = OffneticColors.surfaceScrim
     ) {
         Row(
             modifier = Modifier
@@ -286,9 +287,9 @@ private fun ChatHeader(
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     val (targetColor, statusLabel) = when (reachability) {
-                        ChatReachability.LOCAL -> Color(0xFF4ADE80) to stringResource(R.string.chat_status_nearby)
-                        ChatReachability.INTERNET_RELAY -> Color(0xFF60A5FA) to stringResource(R.string.chat_status_internet)
-                        ChatReachability.OFFLINE -> Color(0x40FFFFFF) to stringResource(R.string.chat_status_offline)
+                        ChatReachability.LOCAL -> OffneticColors.accentGreen to stringResource(R.string.chat_status_nearby)
+                        ChatReachability.INTERNET_RELAY -> OffneticColors.accentBlue to stringResource(R.string.chat_status_internet)
+                        ChatReachability.OFFLINE -> OffneticColors.textHint to stringResource(R.string.chat_status_offline)
                     }
                     val dotColor by animateColorAsState(targetColor, animationSpec = tween(300), label = "dot")
                     Box(
@@ -311,7 +312,7 @@ private fun ChatHeader(
                 Icon(
                     painter = painterResource(R.drawable.ic_phone_outlined),
                     contentDescription = stringResource(R.string.cd_call),
-                    tint = if (reachability != ChatReachability.OFFLINE) Color(0xB3FFFFFF) else Color(0x40FFFFFF),
+                    tint = if (reachability != ChatReachability.OFFLINE) OffneticColors.iconMuted else OffneticColors.textHint,
                     modifier = Modifier.size(20.dp)
                 )
             }
@@ -331,7 +332,7 @@ private fun InputBar(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth().navigationBarsPadding(),
-        color = Color(0xFF141414)
+        color = MaterialTheme.colorScheme.surface
     ) {
         Row(
             modifier = Modifier
@@ -344,7 +345,7 @@ private fun InputBar(
                     text = "+",
                     fontWeight = FontWeight.Bold,
                     fontSize = 20.sp,
-                    color = if (richEnabled) Color(0x73FFFFFF) else Color(0x40FFFFFF)
+                    color = if (richEnabled) OffneticColors.textMuted else OffneticColors.textHint
                 )
             }
 
@@ -355,7 +356,7 @@ private fun InputBar(
                 ) {
                     Canvas(modifier = Modifier.fillMaxSize()) {
                         drawCircle(
-                            color = if (isRecording) Color(0xFFEF4444) else if (richEnabled) Color(0x73FFFFFF) else Color(0x40FFFFFF),
+                            color = if (isRecording) OffneticColors.danger else if (richEnabled) OffneticColors.textMuted else OffneticColors.textHint,
                             radius = size.minDimension / 2
                         )
                     }
@@ -370,19 +371,19 @@ private fun InputBar(
                     Text(
                         stringResource(R.string.chat_input_placeholder),
                         style = MaterialTheme.typography.bodyMedium,
-                        color = Color(0x40FFFFFF)
+                        color = OffneticColors.textHint
                     )
                 },
                 maxLines = 4,
                 shape = RoundedCornerShape(20.dp),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = Color(0x40FFFFFF),
-                    unfocusedBorderColor = Color(0x1AFFFFFF),
+                    focusedBorderColor = OffneticColors.textHint,
+                    unfocusedBorderColor = OffneticColors.surfaceRaised,
                     focusedTextColor = Color.White,
                     unfocusedTextColor = Color.White,
                     cursorColor = Color.White,
-                    focusedContainerColor = Color(0x0DFFFFFF),
-                    unfocusedContainerColor = Color(0x0DFFFFFF)
+                    focusedContainerColor = OffneticColors.surfaceCard,
+                    unfocusedContainerColor = OffneticColors.surfaceCard
                 )
             )
             Spacer(modifier = Modifier.width(Spacing.xs))
@@ -393,7 +394,7 @@ private fun InputBar(
                 Icon(
                     painter = painterResource(R.drawable.ic_send),
                     contentDescription = stringResource(R.string.cd_send),
-                    tint = if (textInput.isNotBlank()) Color.White else Color(0x40FFFFFF)
+                    tint = if (textInput.isNotBlank()) Color.White else OffneticColors.textHint
                 )
             }
         }
@@ -409,7 +410,7 @@ private fun MessageBubble(
     onCancel: () -> Unit = {},
     onRetry: () -> Unit = {}
 ) {
-    val backgroundColor = if (isMine) Color(0xFF1E1E1E) else Color(0xFF141414)
+    val backgroundColor = if (isMine) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface
     val alignment = if (isMine) Alignment.End else Alignment.Start
     var showMenu by remember { mutableStateOf(false) }
 
@@ -433,7 +434,7 @@ private fun MessageBubble(
                 modifier = Modifier
                     .widthIn(max = 300.dp)
                     .then(
-                        if (!isMine) Modifier.border(0.5.dp, Color(0x14FFFFFF), shape)
+                        if (!isMine) Modifier.border(0.5.dp, OffneticColors.surfaceBubble, shape)
                         else Modifier
                     )
                     .combinedClickable(
@@ -447,20 +448,20 @@ private fun MessageBubble(
                             Text(
                                 text = message.content,
                 style = MaterialTheme.typography.bodySmall,
-                                color = Color(0x66FFFFFF)
+                                color = OffneticColors.textSubtle
                             )
                             Spacer(modifier = Modifier.height(Spacing.sm))
                             Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                                 Text(
                                     text = stringResource(R.string.action_retry),
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = Color(0xFF4ADE80),
+                                    color = OffneticColors.accentGreen,
                                     modifier = Modifier.clickable { onRetry() }
                                 )
                                 Text(
                                     text = stringResource(R.string.action_delete),
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = Color(0xFFEF4444),
+                                    color = OffneticColors.danger,
                                     modifier = Modifier.clickable { onDelete() }
                                 )
                             }
@@ -493,24 +494,27 @@ private fun MessageBubble(
                                     } else {
                                         val path = message.attachmentPath
                                         if (path != null) {
+                                            // Player is tracked before configuration so a throw
+                                            // from prepare()/start() can release it (D1)
+                                            var mp: android.media.MediaPlayer? = null
                                             try {
-                                                val mp = android.media.MediaPlayer().apply {
-                                                    if (path.startsWith("content://")) {
-                                                        setDataSource(context, android.net.Uri.parse(path))
-                                                    } else {
-                                                        setDataSource(path)
-                                                    }
-                                                    prepare()
-                                                    setOnCompletionListener {
-                                                        it.release()
-                                                        mediaPlayer = null
-                                                        isPlaying = false
-                                                    }
-                                                    start()
+                                                mp = android.media.MediaPlayer()
+                                                if (path.startsWith("content://")) {
+                                                    mp.setDataSource(context, android.net.Uri.parse(path))
+                                                } else {
+                                                    mp.setDataSource(path)
                                                 }
+                                                mp.prepare()
+                                                mp.setOnCompletionListener {
+                                                    it.release()
+                                                    mediaPlayer = null
+                                                    isPlaying = false
+                                                }
+                                                mp.start()
                                                 mediaPlayer = mp
                                                 isPlaying = true
                                             } catch (_: Exception) {
+                                                mp?.release()
                                                 Toast.makeText(context, context.getString(R.string.chat_cannot_play_voice), Toast.LENGTH_SHORT).show()
                                             }
                                         }
@@ -526,7 +530,7 @@ private fun MessageBubble(
                                 ) {
                                     Canvas(modifier = Modifier.fillMaxSize()) {
                                         drawCircle(
-                                            color = if (isPlaying) Color(0xFFEF4444) else Color(0xFF4ADE80),
+                                            color = if (isPlaying) OffneticColors.danger else OffneticColors.accentGreen,
                                             radius = size.minDimension / 2
                                         )
                                     }
@@ -535,7 +539,7 @@ private fun MessageBubble(
                             Text(
                                 text = message.content,
                                 style = MaterialTheme.typography.bodySmall,
-                                color = Color(0x66FFFFFF)
+                                color = OffneticColors.textSubtle
                             )
                             }
                         }
@@ -582,7 +586,7 @@ private fun MessageBubble(
                                 Text(
                                     text = fileName,
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = Color(0x66FFFFFF),
+                                    color = OffneticColors.textSubtle,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
@@ -592,7 +596,7 @@ private fun MessageBubble(
                             Text(
                                 text = message.content,
                 style = MaterialTheme.typography.bodySmall,
-                                color = Color(0x66FFFFFF)
+                                color = OffneticColors.textSubtle
                             )
                         }
                     }
@@ -619,7 +623,7 @@ private fun MessageBubble(
                 }
                 DropdownMenuItem(
                     text = {
-                        Text(stringResource(R.string.chat_delete_for_me), style = MaterialTheme.typography.labelLarge, color = Color(0xFFEF4444))
+                        Text(stringResource(R.string.chat_delete_for_me), style = MaterialTheme.typography.labelLarge, color = OffneticColors.danger)
                     },
                     onClick = {
                         showMenu = false
@@ -629,7 +633,7 @@ private fun MessageBubble(
                 if (isMine && message.deliveryState == MessageDeliveryState.SAVED && message.type != Message.TYPE_CANCELLED) {
                     DropdownMenuItem(
                         text = {
-                            Text(stringResource(R.string.chat_cancel_sending), style = MaterialTheme.typography.labelLarge, color = Color(0xFFEF4444))
+                            Text(stringResource(R.string.chat_cancel_sending), style = MaterialTheme.typography.labelLarge, color = OffneticColors.danger)
                         },
                         onClick = {
                             showMenu = false
@@ -647,17 +651,17 @@ private fun MessageBubble(
             Text(
                 text = formatTime(message.timestamp),
                 style = MaterialTheme.typography.bodySmall,
-                color = Color(0x40FFFFFF)
+                color = OffneticColors.textHint
             )
             if (isMine && message.type != Message.TYPE_CANCELLED && message.type != Message.TYPE_SYSTEM) {
                 Spacer(modifier = Modifier.width(Spacing.xs))
                 val (statusColor, statusLabel) = when (message.deliveryState) {
-                    MessageDeliveryState.SAVED -> Color(0x40FFFFFF) to stringResource(R.string.chat_delivery_saved)
-                    MessageDeliveryState.SENT_LOCAL -> Color(0x66FFFFFF) to stringResource(R.string.chat_delivery_sending)
-                    MessageDeliveryState.SENT_RELAY -> Color(0x66FFFFFF) to stringResource(R.string.chat_delivery_relayed)
-                    MessageDeliveryState.DELIVERED -> Color(0xCCFFFFFF) to stringResource(R.string.chat_delivery_delivered)
-                    MessageDeliveryState.READ -> Color(0xFF4ADE80) to stringResource(R.string.chat_delivery_seen)
-                    MessageDeliveryState.FAILED -> Color(0xFFEF4444) to stringResource(R.string.chat_delivery_failed)
+                    MessageDeliveryState.SAVED -> OffneticColors.textHint to stringResource(R.string.chat_delivery_saved)
+                    MessageDeliveryState.SENT_LOCAL -> OffneticColors.textSubtle to stringResource(R.string.chat_delivery_sending)
+                    MessageDeliveryState.SENT_RELAY -> OffneticColors.textSubtle to stringResource(R.string.chat_delivery_relayed)
+                    MessageDeliveryState.DELIVERED -> OffneticColors.textStrong to stringResource(R.string.chat_delivery_delivered)
+                    MessageDeliveryState.READ -> OffneticColors.accentGreen to stringResource(R.string.chat_delivery_seen)
+                    MessageDeliveryState.FAILED -> OffneticColors.danger to stringResource(R.string.chat_delivery_failed)
                 }
                 Text(
                     text = statusLabel,
@@ -708,7 +712,7 @@ private fun ImageThumbnail(
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
-            .background(Color(0x0DFFFFFF))
+            .background(OffneticColors.surfaceCard)
             .clickable { onClick() },
         contentAlignment = Alignment.Center
     ) {
@@ -723,14 +727,14 @@ private fun ImageThumbnail(
             Text(
                 text = stringResource(R.string.loading),
                 style = MaterialTheme.typography.bodySmall,
-                color = Color(0x4DFFFFFF),
+                color = OffneticColors.textDisabled,
                 modifier = Modifier.padding(Spacing.xl)
             )
         } else {
             Text(
                 text = stringResource(R.string.chat_preview_failed),
                 style = MaterialTheme.typography.bodySmall,
-                color = Color(0x40FFFFFF),
+                color = OffneticColors.textHint,
                 modifier = Modifier.padding(Spacing.xl)
             )
         }
@@ -776,7 +780,7 @@ private fun VideoThumbnail(
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
-            .background(Color(0x0DFFFFFF))
+            .background(OffneticColors.surfaceCard)
             .clickable { onClick() },
         contentAlignment = Alignment.Center
     ) {
@@ -791,7 +795,7 @@ private fun VideoThumbnail(
                 modifier = Modifier
                     .size(44.dp)
                     .clip(CircleShape)
-                    .background(Color(0x99000000)),
+                    .background(OffneticColors.scrimDark),
                 contentAlignment = Alignment.Center
             ) {
                 Canvas(modifier = Modifier.size(16.dp)) {
@@ -808,14 +812,14 @@ private fun VideoThumbnail(
             Text(
                 text = stringResource(R.string.loading),
                 style = MaterialTheme.typography.bodySmall,
-                color = Color(0x4DFFFFFF),
+                color = OffneticColors.textDisabled,
                 modifier = Modifier.padding(Spacing.xl)
             )
         } else {
             Text(
                 text = stringResource(R.string.chat_preview_failed),
                 style = MaterialTheme.typography.bodySmall,
-                color = Color(0x40FFFFFF),
+                color = OffneticColors.textHint,
                 modifier = Modifier.padding(Spacing.xl)
             )
         }
@@ -831,7 +835,7 @@ private fun DocAttachment(
     Row(
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
-            .background(Color(0x0DFFFFFF))
+            .background(OffneticColors.surfaceCard)
             .clickable { onClick() }
             .padding(horizontal = Spacing.md, vertical = Spacing.md),
         verticalAlignment = Alignment.CenterVertically
@@ -839,14 +843,14 @@ private fun DocAttachment(
         Surface(
             modifier = Modifier.size(40.dp),
             shape = RoundedCornerShape(10.dp),
-            color = Color(0x1AFFFFFF)
+            color = OffneticColors.surfaceRaised
         ) {
             Box(contentAlignment = Alignment.Center) {
             Text(
                 text = fileName.substringAfterLast('.', "?").take(3).uppercase(),
                 fontWeight = FontWeight.Bold,
                 fontSize = 10.sp,
-                color = Color(0x73FFFFFF)
+                color = OffneticColors.textMuted
             )
             }
         }
@@ -862,7 +866,7 @@ private fun DocAttachment(
             Text(
                 text = stringResource(R.string.chat_tap_to_open),
                 style = MaterialTheme.typography.bodySmall,
-                color = Color(0x40FFFFFF)
+                color = OffneticColors.textHint
             )
         }
     }
@@ -977,7 +981,7 @@ private fun LinkifiedText(text: String, onLongPress: () -> Unit) {
             for (m in URL_REGEX.findAll(text)) {
                 append(text.substring(last, m.range.first))
                 pushStringAnnotation("URL", m.value)
-                withStyle(SpanStyle(color = Color(0xFF60A5FA), textDecoration = TextDecoration.Underline)) {
+                withStyle(SpanStyle(color = OffneticColors.accentBlue, textDecoration = TextDecoration.Underline)) {
                     append(m.value)
                 }
                 pop()
@@ -990,7 +994,7 @@ private fun LinkifiedText(text: String, onLongPress: () -> Unit) {
     Text(
         text = annotated,
         style = MaterialTheme.typography.bodyMedium,
-        color = Color(0xE6FFFFFF),
+        color = OffneticColors.textBright,
         maxLines = 20,
         overflow = TextOverflow.Ellipsis,
         onTextLayout = { layoutResult = it },
@@ -1025,10 +1029,10 @@ private fun DateSeparator(timestamp: Long) {
                 stringResource(R.string.chat_yesterday)
             ),
             style = MaterialTheme.typography.bodySmall,
-            color = Color(0x40FFFFFF),
+            color = OffneticColors.textHint,
             modifier = Modifier
                 .clip(RoundedCornerShape(10.dp))
-                .background(Color(0x0DFFFFFF))
+                .background(OffneticColors.surfaceCard)
                 .padding(horizontal = Spacing.md, vertical = Spacing.xxs)
         )
     }

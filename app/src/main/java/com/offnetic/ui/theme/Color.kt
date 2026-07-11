@@ -62,12 +62,18 @@ internal val LightColorScheme = lightColorScheme(
  */
 object OffneticColors {
     val textPrimary = Color.White
+    val textBright = Color(0xE6FFFFFF)
+    val textStrong = Color(0xCCFFFFFF)
     val textSecondary = Color(0x99FFFFFF)
+    val textSubtle = Color(0x66FFFFFF)
     val textMuted = Color(0x73FFFFFF)
     val textFaint = Color(0x59FFFFFF)
     val textDisabled = Color(0x4DFFFFFF)
     val textHint = Color(0x40FFFFFF)
     val textGhost = Color(0x33FFFFFF)
+    val iconMuted = Color(0xB3FFFFFF)
+    val scrimDark = Color(0x99000000)
+    val surfaceScrim = Color(0xE60A0A0A)
 
     val surfaceCard = Color(0x0DFFFFFF)
     val surfaceChip = Color(0x12FFFFFF)

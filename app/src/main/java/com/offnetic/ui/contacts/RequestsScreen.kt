@@ -157,17 +157,35 @@ private fun RequestItem(
         Spacer(modifier = Modifier.width(Spacing.md))
 
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = request.displayName,
-                style = MaterialTheme.typography.labelLarge,
-                color = Color.White,
-                maxLines = 1,
-                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = request.displayName,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                Spacer(modifier = Modifier.width(Spacing.xs))
+                // The display name is attacker-controlled — flag it until the key
+                // has been verified in person (CR5)
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(OffneticColors.surfaceRaised)
+                        .padding(horizontal = Spacing.xs, vertical = 1.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.requests_unverified),
+                        fontSize = 9.sp,
+                        color = OffneticColors.textMuted
+                    )
+                }
+            }
             Text(
                 text = request.peerNostrKey.take(12) + "…",
                 style = MaterialTheme.typography.bodySmall,
-                color = Color(0x40FFFFFF)
+                color = OffneticColors.textHint
             )
         }
 

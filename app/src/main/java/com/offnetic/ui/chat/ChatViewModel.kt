@@ -207,6 +207,11 @@ class ChatViewModel @Inject constructor(
                 }
                 val maxSize = com.offnetic.config.OffneticConfig.MAX_FILE_SIZE_BYTES
                 if (file.length() > maxSize) {
+                    // Delete only our cacheDir copy — copyToLocalFile returns the
+                    // original file for file:// URIs, which we must not touch (D34)
+                    if (file.parentFile == context.cacheDir) {
+                        withContext(Dispatchers.IO) { file.delete() }
+                    }
                     _toastMessage.emit("File exceeds 100MB limit")
                     return@launch
                 }
@@ -351,7 +356,10 @@ class ChatViewModel @Inject constructor(
             val identity = identityDao.getIdentity()
             val myPk = identity?.publicKey ?: return@launch
             val unreadUuids = messageDao.getUnreadIncomingUuids(contactPublicKey, myPk)
-            messageDao.markAsRead(contactPublicKey, myPk)
+            // Scope the update to the uuids we fetched — a blanket chat-wide UPDATE
+            // marks messages that arrive between the two DAO calls as read without
+            // ever sending a receipt for them (D21)
+            messageDao.markUuidsAsRead(unreadUuids)
             if (unreadUuids.isNotEmpty()) {
                 val npub = contactDao.getByPublicKey(contactPublicKey)?.nostrPublicKey
                 unreadUuids.forEach { uuid ->
