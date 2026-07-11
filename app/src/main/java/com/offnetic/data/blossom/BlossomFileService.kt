@@ -87,6 +87,6 @@ class BlossomFileService @Inject constructor(
 
     companion object {
         private const val CIPHERTEXT_OVERHEAD = 1024L
-        private const val MAX_DOWNLOAD_BYTES = 100L * 1024 * 1024 + CIPHERTEXT_OVERHEAD
+        private const val MAX_DOWNLOAD_BYTES = com.offnetic.config.OffneticConfig.MAX_FILE_SIZE_BYTES + CIPHERTEXT_OVERHEAD
     }
 }

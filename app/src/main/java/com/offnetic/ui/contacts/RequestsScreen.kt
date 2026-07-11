@@ -32,11 +32,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.offnetic.R
 import com.offnetic.data.local.db.entity.PendingRequestEntity
+import com.offnetic.ui.theme.OffneticColors
 import com.offnetic.ui.theme.Spacing
 
 @Composable
@@ -49,7 +52,7 @@ fun RequestsScreen(
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
-        containerColor = Color(0xFF0A0A0A)
+        containerColor = MaterialTheme.colorScheme.background
     ) { innerPadding ->
         Column(
             modifier = Modifier
@@ -64,7 +67,7 @@ fun RequestsScreen(
             ) {
                 TextButton(onClick = onBack) {
                     Text(
-                        text = "← Back",
+                        text = stringResource(R.string.action_back),
                         style = MaterialTheme.typography.labelLarge,
                         color = Color.White
                     )
@@ -74,7 +77,7 @@ fun RequestsScreen(
             Spacer(modifier = Modifier.height(Spacing.md))
 
             Text(
-                text = "Connection Requests",
+                text = stringResource(R.string.requests_title),
                 style = MaterialTheme.typography.titleLarge,
                 color = Color.White,
                 modifier = Modifier.padding(horizontal = Spacing.xl)
@@ -84,7 +87,7 @@ fun RequestsScreen(
 
             if (state.isLoading) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("Loading…", style = MaterialTheme.typography.bodyMedium, color = Color(0x73FFFFFF))
+                    Text(stringResource(R.string.loading), style = MaterialTheme.typography.bodyMedium, color = OffneticColors.textMuted)
                 }
             } else if (state.requests.isEmpty()) {
                 Box(
@@ -94,9 +97,9 @@ fun RequestsScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "No pending connection requests",
+                        text = stringResource(R.string.requests_empty),
                         style = MaterialTheme.typography.bodyMedium,
-                        color = Color(0x73FFFFFF)
+                        color = OffneticColors.textMuted
                     )
                 }
             } else {
@@ -177,7 +180,7 @@ private fun RequestItem(
             shape = RoundedCornerShape(12.dp),
             colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color(0xFF0A0A0A))
         ) {
-            Text("Accept", style = MaterialTheme.typography.labelSmall)
+            Text(stringResource(R.string.action_accept), style = MaterialTheme.typography.labelSmall)
         }
 
         Spacer(modifier = Modifier.width(Spacing.xs))
@@ -192,7 +195,7 @@ private fun RequestItem(
                 brush = androidx.compose.ui.graphics.SolidColor(Color(0x14FFFFFF))
             )
         ) {
-            Text("Ignore", style = MaterialTheme.typography.labelSmall)
+            Text(stringResource(R.string.action_ignore), style = MaterialTheme.typography.labelSmall)
         }
     }
 }

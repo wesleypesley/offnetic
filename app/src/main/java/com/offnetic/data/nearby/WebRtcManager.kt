@@ -269,7 +269,7 @@ class WebRtcManager(
                                     }
                                     CallTransport.RELAY -> {
                                         // Non-trickle: wait for full ICE gather (up to 8s) then send complete SDP
-                                        withTimeoutOrNull(8_000L) { iceGatheringDeferreds[peerPublicKey]?.await() }
+                                        withTimeoutOrNull(com.offnetic.config.OffneticConfig.ICE_GATHERING_TIMEOUT_MS) { iceGatheringDeferreds[peerPublicKey]?.await() }
                                         val finalDesc = pc.localDescription
                                         val offerJson = JSONObject().apply {
                                             put("type", finalDesc?.type?.canonicalForm() ?: sdp.type.canonicalForm())
@@ -481,7 +481,7 @@ class WebRtcManager(
                                     iceCandidateCache.remove(peerPublicKey)
                                 }
                                 CallTransport.RELAY -> {
-                                    withTimeoutOrNull(8_000L) { iceGatheringDeferreds[peerPublicKey]?.await() }
+                                    withTimeoutOrNull(com.offnetic.config.OffneticConfig.ICE_GATHERING_TIMEOUT_MS) { iceGatheringDeferreds[peerPublicKey]?.await() }
                                     val finalDesc = pc.localDescription
                                     val answerJson = JSONObject().apply {
                                         put("type", finalDesc?.type?.canonicalForm() ?: sdp.type.canonicalForm())
@@ -774,10 +774,9 @@ class WebRtcManager(
         val egl = eglBase ?: return null
 
         val iceServers = if (transport == CallTransport.RELAY) {
-            listOf(
-                PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer(),
-                PeerConnection.IceServer.builder("stun:stun1.l.google.com:19302").createIceServer()
-            )
+            com.offnetic.config.OffneticConfig.STUN_SERVERS.map {
+                PeerConnection.IceServer.builder(it).createIceServer()
+            }
         } else {
             emptyList()
         }
@@ -996,13 +995,13 @@ class WebRtcManager(
             java.net.NetworkInterface.getNetworkInterfaces()?.asSequence()
                 ?.find { it.displayName == "p2p0" }
                 ?.inetAddresses?.asSequence()
-                ?.find { it.hostAddress?.startsWith("192.168.49.") == true }
+                ?.find { it.hostAddress?.startsWith(com.offnetic.config.OffneticConfig.P2P_SUBNET_PREFIX) == true }
                 ?.hostAddress
         } catch (e: Exception) { null }
         if (p2pIp == null) return
         val ufrag = Regex("a=ice-ufrag:(\\S+)").find(localSdp)?.groupValues?.get(1) ?: return
         val foundation = Math.abs(p2pIp.hashCode()) % 2_000_000_000
-        val sdp = "candidate:${foundation} 1 udp 2122252543 $p2pIp 58000 typ host generation 0 ufrag $ufrag"
+        val sdp = "candidate:${foundation} 1 udp 2122252543 $p2pIp ${com.offnetic.config.OffneticConfig.P2P_CANDIDATE_PORT} typ host generation 0 ufrag $ufrag"
         scope.launch {
             ncapManager.sendCallSignal(
                 endpointId, NcapEnvelope.PayloadType.ICE_CANDIDATE,
@@ -1050,7 +1049,7 @@ class WebRtcManager(
 
     private fun launchCallTimeout(peerPublicKey: String, state: MutableStateFlow<CallState>) {
         scope.launch {
-            kotlinx.coroutines.delay(60_000L)
+            kotlinx.coroutines.delay(com.offnetic.config.OffneticConfig.CALL_TIMEOUT_MS)
             if (state.value.phase == CallPhase.CONNECTING || state.value.phase == CallPhase.OUTGOING) {
                 state.update { it.copy(phase = CallPhase.ENDED, error = "Call timed out") }
                 hangup(peerPublicKey)

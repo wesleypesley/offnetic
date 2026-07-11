@@ -163,21 +163,21 @@ fun OffneticNavHost() {
 
         composable(Routes.PERMISSION_1_CONNECTIVITY) {
             PermissionSlide(
-                title = "Connectivity",
+                slideIndex = 0,
                 onNext = { navController.navigate(Routes.PERMISSION_2_CAMERA_MIC) }
             )
         }
 
         composable(Routes.PERMISSION_2_CAMERA_MIC) {
             PermissionSlide(
-                title = "Camera & Microphone",
+                slideIndex = 1,
                 onNext = { navController.navigate(Routes.PERMISSION_3_NOTIFICATIONS) }
             )
         }
 
         composable(Routes.PERMISSION_3_NOTIFICATIONS) {
             PermissionSlide(
-                title = "Notifications",
+                slideIndex = 2,
                 onNext = {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                         navController.navigate(Routes.PERMISSION_4_FULL_SCREEN_INTENT)

@@ -50,7 +50,7 @@ import java.io.File
 import javax.inject.Inject
 
 private const val RELAY_OUTBOX_TTL_MS = 7L * 24 * 60 * 60 * 1000
-private const val RELAY_OUTBOX_CAP = 50
+private const val RELAY_OUTBOX_CAP = com.offnetic.config.OffneticConfig.RELAY_OUTBOX_CAP
 private const val CONNECTION_REQUEST_TTL_MS = 72L * 60 * 60 * 1000
 private const val MESSAGE_PAGE_SIZE = 100
 
@@ -205,7 +205,7 @@ class ChatViewModel @Inject constructor(
                     _toastMessage.emit("Could not read selected file")
                     return@launch
                 }
-                val maxSize = 100L * 1024 * 1024
+                val maxSize = com.offnetic.config.OffneticConfig.MAX_FILE_SIZE_BYTES
                 if (file.length() > maxSize) {
                     _toastMessage.emit("File exceeds 100MB limit")
                     return@launch
@@ -492,8 +492,15 @@ class ChatViewModel @Inject constructor(
         }
     }
 
+    @Volatile private var lastUnsentRetryAt = 0L
+
     private fun retryUnsentMessages() {
+        // Cooldown between passes — reconnect events can arrive in bursts and each
+        // pass re-encrypts every unsent message (D23)
+        val now = System.currentTimeMillis()
+        if (now - lastUnsentRetryAt < 10_000L) return
         if (!retryInProgress.compareAndSet(false, true)) return
+        lastUnsentRetryAt = now
         viewModelScope.launch {
             try {
                 val identity = identityDao.getIdentity()
@@ -674,13 +681,9 @@ class ChatViewModel @Inject constructor(
                        msg.type == com.offnetic.data.local.db.entity.Message.TYPE_VIDEO) {
                 val path = msg.attachmentPath
                 if (path != null && java.io.File(path).exists()) {
-                    val entity = msg.copy(
-                        type = when (msg.type) {
-                            com.offnetic.data.local.db.entity.Message.TYPE_VOICE_NOTE -> msg.type
-                            else -> com.offnetic.data.local.db.entity.Message.TYPE_FILE
-                        },
-                        deliveryState = MessageDeliveryState.SAVED
-                    )
+                    // Keep the original type — mapping IMAGE/VIDEO to TYPE_FILE on retry
+                    // lost the media classification (D24)
+                    val entity = msg.copy(deliveryState = MessageDeliveryState.SAVED)
                     messageDao.update(entity)
                     val connected = ncapManager.getConnectedEndpointIds(contactPublicKey)
                     if (connected.isNotEmpty()) {

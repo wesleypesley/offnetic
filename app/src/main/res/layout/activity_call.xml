@@ -51,8 +51,10 @@
 
     </LinearLayout>
 
-    <!-- Layer 3: top scrim + header (name, duration, status) -->
+    <!-- Layer 3: top scrim + header (name, duration, status).
+         paddingTop is replaced at runtime with the real status-bar/cutout inset (H22) -->
     <LinearLayout
+        android:id="@+id/call_header"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="top"
@@ -92,8 +94,10 @@
 
     </LinearLayout>
 
-    <!-- Layer 4: self-view PiP — top-right, portrait aspect, rounded corners -->
+    <!-- Layer 4: self-view PiP — top-right, portrait aspect, rounded corners.
+         marginTop is adjusted at runtime for tall status bars/cutouts (H21) -->
     <FrameLayout
+        android:id="@+id/pip_container"
         android:layout_width="96dp"
         android:layout_height="128dp"
         android:layout_gravity="top|end"
@@ -111,8 +115,10 @@
 
     </FrameLayout>
 
-    <!-- Layer 5: bottom scrim + controls -->
+    <!-- Layer 5: bottom scrim + controls.
+         paddingBottom is replaced at runtime with the gesture-nav inset (H23) -->
     <LinearLayout
+        android:id="@+id/call_controls"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"

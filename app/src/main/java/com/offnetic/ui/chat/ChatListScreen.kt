@@ -39,11 +39,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.offnetic.ui.theme.OffneticColors
 import com.offnetic.ui.theme.Spacing
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -59,7 +61,7 @@ fun ChatListScreen(
 ) {
     Scaffold(
         modifier = Modifier.fillMaxSize(),
-        containerColor = Color(0xFF0A0A0A)
+        containerColor = MaterialTheme.colorScheme.background
     ) { innerPadding ->
         Box(modifier = Modifier.padding(innerPadding)) {
             ChatListContent(
@@ -122,7 +124,7 @@ fun ChatListContent(
 
     if (showProfileDialog) {
         ProfileDialog(
-            displayName = profileDisplayName.ifEmpty { "No username set" },
+            displayName = profileDisplayName.ifEmpty { stringResource(R.string.profile_no_username) },
             onDismiss = { showProfileDialog = false }
         )
     }
@@ -139,7 +141,7 @@ private fun ProfileDialog(
         shape = RoundedCornerShape(20.dp),
         title = {
             Text(
-                text = "Profile",
+                text = stringResource(R.string.profile_title),
                 style = MaterialTheme.typography.titleLarge,
                 color = Color.White
             )
@@ -147,10 +149,10 @@ private fun ProfileDialog(
         text = {
             Column {
                 Text(
-                    text = "Username",
+                    text = stringResource(R.string.profile_username_label),
                     style = MaterialTheme.typography.labelSmall,
                     letterSpacing = 1.5.sp,
-                    color = Color(0x40FFFFFF)
+                    color = OffneticColors.textHint
                 )
                 Spacer(modifier = Modifier.height(Spacing.sm))
                 Text(
@@ -163,9 +165,9 @@ private fun ProfileDialog(
         confirmButton = {
             androidx.compose.material3.TextButton(onClick = onDismiss) {
                 Text(
-                    text = "Close",
+                    text = stringResource(R.string.action_close),
                     style = MaterialTheme.typography.labelLarge,
-                    color = Color(0xFF3B82F6)
+                    color = OffneticColors.accentLink
                 )
             }
         }
@@ -208,9 +210,9 @@ private fun Header(
                     )
                     Spacer(modifier = Modifier.width(Spacing.sm))
                     Text(
-                        text = if (isDiscovering) "Discovering nearby" else "Offline",
+                        text = stringResource(if (isDiscovering) R.string.chat_list_discovering else R.string.chat_list_offline),
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color(0x4DFFFFFF)
+                        color = OffneticColors.textDisabled
                     )
                 }
             }
@@ -237,7 +239,7 @@ private fun QrButton(onClick: () -> Unit) {
         Box(contentAlignment = Alignment.Center) {
             Icon(
                 painter = painterResource(R.drawable.ic_qr_code_scanner),
-                contentDescription = "Scan QR",
+                contentDescription = stringResource(R.string.cd_scan_qr),
                 tint = Color(0xB3FFFFFF),
                 modifier = Modifier.size(20.dp)
             )
@@ -258,7 +260,7 @@ private fun RequestsButton(onClick: () -> Unit, badgeCount: Int) {
             Box(contentAlignment = Alignment.Center) {
                 Icon(
                     imageVector = Icons.Default.Person,
-                    contentDescription = "Requests",
+                    contentDescription = stringResource(R.string.cd_requests),
                     tint = Color(0xB3FFFFFF),
                     modifier = Modifier.size(20.dp)
                 )
@@ -315,7 +317,7 @@ private fun ShutdownButton(onClick: () -> Unit) {
         Box(contentAlignment = Alignment.Center) {
             Icon(
                 painter = painterResource(R.drawable.ic_power_settings_new),
-                contentDescription = "Shutdown",
+                contentDescription = stringResource(R.string.cd_shutdown),
                 tint = Color(0xFFEF4444),
                 modifier = Modifier.size(20.dp)
             )
@@ -335,7 +337,7 @@ private fun GearButton(onClick: () -> Unit) {
         Box(contentAlignment = Alignment.Center) {
             Icon(
                 painter = painterResource(R.drawable.ic_settings),
-                contentDescription = "Settings",
+                contentDescription = stringResource(R.string.cd_settings),
                 tint = Color(0xB3FFFFFF),
                 modifier = Modifier.size(20.dp)
             )
@@ -352,9 +354,9 @@ private fun EmptyState() {
         contentAlignment = Alignment.Center
     ) {
         Text(
-            text = "No conversations yet",
+            text = stringResource(R.string.chat_list_empty),
             style = MaterialTheme.typography.bodyMedium,
-            color = Color(0x40FFFFFF)
+            color = OffneticColors.textHint
         )
     }
 }

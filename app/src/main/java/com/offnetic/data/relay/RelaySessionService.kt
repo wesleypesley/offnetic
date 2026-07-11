@@ -76,6 +76,6 @@ class RelaySessionService @Inject constructor(
 
     companion object {
         private const val RELAY_OUTBOX_TTL_MS = 7L * 24 * 60 * 60 * 1000
-        private const val RELAY_OUTBOX_CAP = 50
+        private const val RELAY_OUTBOX_CAP = com.offnetic.config.OffneticConfig.RELAY_OUTBOX_CAP
     }
 }

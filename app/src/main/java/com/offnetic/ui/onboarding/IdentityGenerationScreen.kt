@@ -56,11 +56,11 @@ fun IdentityGenerationScreen(
     val error by viewModel.error.collectAsState()
 
     val lines = listOf(
-        "Generating ECDH P-256 keypair",
-        "Deriving public identity",
-        "Initialising PQXDH bundle",
-        "Sealing into Keystore",
-        "Identity secured"
+        androidx.compose.ui.res.stringResource(com.offnetic.R.string.identity_step_keypair),
+        androidx.compose.ui.res.stringResource(com.offnetic.R.string.identity_step_public),
+        androidx.compose.ui.res.stringResource(com.offnetic.R.string.identity_step_pqxdh),
+        androidx.compose.ui.res.stringResource(com.offnetic.R.string.identity_step_keystore),
+        androidx.compose.ui.res.stringResource(com.offnetic.R.string.identity_step_secured)
     )
     val activeLine = (progress / 100f * lines.size).toInt().coerceAtMost(lines.size - 1)
 
@@ -86,7 +86,7 @@ fun IdentityGenerationScreen(
         modifier = Modifier
             .fillMaxSize()
             .safeDrawingPadding()
-            .background(Color(0xFF0A0A0A))
+            .background(MaterialTheme.colorScheme.background)
     ) {
         NoiseOverlay()
 
@@ -144,11 +144,13 @@ fun IdentityGenerationScreen(
             Spacer(modifier = Modifier.height(Spacing.xxxl))
 
             Text(
-                text = when {
-                    error != null -> "Something went wrong"
-                    phase == 0 -> "Creating your identity"
-                    else -> "Identity created"
-                },
+                text = androidx.compose.ui.res.stringResource(
+                    when {
+                        error != null -> com.offnetic.R.string.identity_error_title
+                        phase == 0 -> com.offnetic.R.string.identity_creating
+                        else -> com.offnetic.R.string.identity_created
+                    }
+                ),
                 style = MaterialTheme.typography.titleLarge,
                 color = Color.White
             )
@@ -156,11 +158,13 @@ fun IdentityGenerationScreen(
             Spacer(modifier = Modifier.height(Spacing.sm))
 
             Text(
-                text = when {
-                    error != null -> error!!
-                    phase == 0 -> "Your cryptographic identity is being generated entirely on this device."
-                    else -> "Your keys are sealed in the Android Keystore."
-                },
+                text = androidx.compose.ui.res.stringResource(
+                    when {
+                        error != null -> com.offnetic.R.string.identity_error_body
+                        phase == 0 -> com.offnetic.R.string.identity_generating_desc
+                        else -> com.offnetic.R.string.identity_sealed_desc
+                    }
+                ),
                 style = MaterialTheme.typography.bodyMedium,
                 color = Color(0x59FFFFFF),
                 textAlign = TextAlign.Center
@@ -222,7 +226,7 @@ fun IdentityGenerationScreen(
                     )
                 ) {
                     Text(
-                        text = "Retry",
+                        text = androidx.compose.ui.res.stringResource(com.offnetic.R.string.action_retry),
                         style = MaterialTheme.typography.labelLarge
                     )
                 }
@@ -240,7 +244,7 @@ fun IdentityGenerationScreen(
                     )
                 ) {
                     Text(
-                        text = "Continue",
+                        text = androidx.compose.ui.res.stringResource(com.offnetic.R.string.action_continue),
                         style = MaterialTheme.typography.labelLarge
                     )
                 }

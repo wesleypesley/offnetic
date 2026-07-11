@@ -18,44 +18,48 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.offnetic.ui.theme.Spacing
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.offnetic.R
+import com.offnetic.ui.theme.OffneticColors
+import com.offnetic.ui.theme.Spacing
 
 private val USERNAME_REGEX = Regex("^[a-zA-Z0-9_]{2,24}$")
+private const val USERNAME_MAX_LENGTH = 24
 
 @Composable
 fun ProfileSetupScreen(
     onDone: () -> Unit = {}
 ) {
     var username by remember { mutableStateOf("") }
-    var visible by remember { mutableStateOf(false) }
     val viewModel: ProfileSetupViewModel = hiltViewModel()
+    val saveState by viewModel.saveState.collectAsState()
 
     val trimmed = username.trim()
     val isValid = trimmed.matches(USERNAME_REGEX)
     val hasContent = trimmed.length >= 2
     val showError = hasContent && !isValid
-    val canProceed = isValid
+    val saving = saveState == ProfileSaveState.Saving
+    val canProceed = isValid && !saving
 
-    LaunchedEffect(Unit) {
-        kotlinx.coroutines.delay(60)
-        visible = true
+    // Navigate only after the profile row is confirmed written (O2)
+    LaunchedEffect(saveState) {
+        if (saveState == ProfileSaveState.Saved) onDone()
     }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .safeDrawingPadding()
-            .background(Color(0xFF0A0A0A))
+            .background(MaterialTheme.colorScheme.background)
     ) {
         NoiseOverlay()
 
@@ -66,47 +70,47 @@ fun ProfileSetupScreen(
             verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center
         ) {
             Text(
-                text = "SET UP PROFILE",
+                text = stringResource(R.string.profile_setup_tag),
                 style = MaterialTheme.typography.labelSmall,
                 letterSpacing = 2.5.sp,
-                color = Color(0x4DFFFFFF)
+                color = OffneticColors.textDisabled
             )
 
             Spacer(modifier = Modifier.height(Spacing.xl))
 
             Text(
-                text = "How should people see you?",
+                text = stringResource(R.string.profile_setup_question),
                 style = MaterialTheme.typography.displayLarge,
-                color = Color.White
+                color = OffneticColors.textPrimary
             )
 
             Spacer(modifier = Modifier.height(Spacing.sm))
 
             Text(
-                text = "Your name is only visible to trusted contacts you\u2019ve paired with.",
+                text = stringResource(R.string.profile_setup_hint),
                 style = MaterialTheme.typography.bodyMedium,
-                color = Color(0x59FFFFFF)
+                color = OffneticColors.textFaint
             )
 
             Spacer(modifier = Modifier.height(Spacing.xxxl))
 
             Text(
-                text = "USERNAME",
+                text = stringResource(R.string.profile_setup_username_label),
                 style = MaterialTheme.typography.labelSmall,
                 letterSpacing = 1.5.sp,
-                color = Color(0x4DFFFFFF)
+                color = OffneticColors.textDisabled
             )
 
             Spacer(modifier = Modifier.height(Spacing.md))
 
             OutlinedTextField(
                 value = username,
-                onValueChange = { if (it.length <= 24) username = it },
+                onValueChange = { username = it.take(USERNAME_MAX_LENGTH) },
                 placeholder = {
                     Text(
-                        "Enter a username",
+                        stringResource(R.string.profile_setup_placeholder),
                         style = MaterialTheme.typography.bodyLarge,
-                        color = Color(0x40FFFFFF)
+                        color = OffneticColors.textHint
                     )
                 },
                 isError = showError,
@@ -114,36 +118,46 @@ fun ProfileSetupScreen(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(14.dp),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = Color.White,
-                    unfocusedTextColor = Color.White,
-                    cursorColor = Color.White,
-                    focusedBorderColor = if (showError) Color(0xFFEF4444) else Color(0x40FFFFFF),
-                    unfocusedBorderColor = if (showError) Color(0xFFEF4444) else Color(0x1AFFFFFF),
-                    focusedContainerColor = Color(0x0DFFFFFF),
-                    unfocusedContainerColor = Color(0x0DFFFFFF)
+                    focusedTextColor = OffneticColors.textPrimary,
+                    unfocusedTextColor = OffneticColors.textPrimary,
+                    cursorColor = OffneticColors.textPrimary,
+                    focusedBorderColor = if (showError) OffneticColors.danger else OffneticColors.textHint,
+                    unfocusedBorderColor = if (showError) OffneticColors.danger else OffneticColors.surfaceRaised,
+                    focusedContainerColor = OffneticColors.surfaceCard,
+                    unfocusedContainerColor = OffneticColors.surfaceCard
                 ),
                 textStyle = MaterialTheme.typography.bodyLarge,
                 supportingText = {
                     Column {
                         if (showError) {
                             Text(
-                                text = "Only letters, numbers, and underscores",
+                                text = stringResource(R.string.profile_setup_invalid),
                                 style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xFFEF4444)
+                                color = OffneticColors.danger
                             )
                         } else {
+                            // Live counter makes the max-length cap visible instead of
+                            // silently swallowing pasted text (O19)
                             Text(
-                                text = "Letters, numbers, and underscores only",
+                                text = stringResource(R.string.profile_setup_rules) + "  ·  ${username.length}/$USERNAME_MAX_LENGTH",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = Color(0x33FFFFFF)
+                                color = OffneticColors.textGhost
                             )
                         }
                         Spacer(modifier = Modifier.height(Spacing.xs))
                         Text(
-                            text = "\u26A0 This cannot be changed later.",
+                            text = stringResource(R.string.profile_setup_permanent),
                             style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFFF59E0B)
+                            color = androidx.compose.ui.graphics.Color(0xFFF59E0B)
                         )
+                        if (saveState == ProfileSaveState.Failed) {
+                            Spacer(modifier = Modifier.height(Spacing.xs))
+                            Text(
+                                text = stringResource(R.string.profile_setup_save_failed),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = OffneticColors.danger
+                            )
+                        }
                     }
                 }
             )
@@ -151,24 +165,21 @@ fun ProfileSetupScreen(
             Spacer(modifier = Modifier.weight(1f))
 
             Button(
-                onClick = {
-                    viewModel.saveProfile(trimmed)
-                    onDone()
-                },
+                onClick = { viewModel.saveProfile(trimmed) },
                 enabled = canProceed,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),
                 shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = if (canProceed) Color.White else Color(0x14FFFFFF),
-                    contentColor = if (canProceed) Color(0xFF0A0A0A) else Color(0x40FFFFFF),
-                    disabledContainerColor = Color(0x14FFFFFF),
-                    disabledContentColor = Color(0x40FFFFFF)
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    disabledContainerColor = OffneticColors.surfaceBubble,
+                    disabledContentColor = OffneticColors.textHint
                 )
             ) {
                 Text(
-                    text = "Enter Offnetic",
+                    text = if (saving) stringResource(R.string.loading) else stringResource(R.string.profile_setup_enter),
                     style = MaterialTheme.typography.labelLarge
                 )
             }

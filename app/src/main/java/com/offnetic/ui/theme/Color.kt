@@ -1,14 +1,10 @@
 package com.offnetic.ui.theme
 
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.runtime.Composable
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 
-private val DarkColorScheme = androidx.compose.material3.darkColorScheme(
+internal val DarkColorScheme = darkColorScheme(
     background = Color(0xFF0A0A0A),
     surface = Color(0xFF141414),
     surfaceVariant = Color(0xFF1E1E1E),
@@ -37,7 +33,7 @@ private val DarkColorScheme = androidx.compose.material3.darkColorScheme(
     onErrorContainer = Color(0xFFFFDAD6)
 )
 
-private val LightColorScheme = androidx.compose.material3.lightColorScheme(
+internal val LightColorScheme = lightColorScheme(
     background = Color(0xFFF5F5F5),
     surface = Color.White,
     surfaceVariant = Color(0xFFEBEBEB),
@@ -59,47 +55,30 @@ private val LightColorScheme = androidx.compose.material3.lightColorScheme(
     onErrorContainer = Color(0xFF690005)
 )
 
-val Typography = androidx.compose.material3.Typography(
-    displayLarge = androidx.compose.material3.Typography().displayLarge.copy(
-        fontFamily = FontFamily.Default, fontWeight = FontWeight.Bold, fontSize = 28.sp
-    ),
-    titleLarge = androidx.compose.material3.Typography().titleLarge.copy(
-        fontFamily = FontFamily.Default, fontWeight = FontWeight.Bold, fontSize = 22.sp
-    ),
-    titleMedium = androidx.compose.material3.Typography().titleMedium.copy(
-        fontFamily = FontFamily.Default, fontWeight = FontWeight.Medium, fontSize = 18.sp
-    ),
-    bodyLarge = androidx.compose.material3.Typography().bodyLarge.copy(
-        fontFamily = FontFamily.Default, fontWeight = FontWeight.Normal, fontSize = 15.sp
-    ),
-    bodyMedium = androidx.compose.material3.Typography().bodyMedium.copy(
-        fontFamily = FontFamily.Default, fontWeight = FontWeight.Normal, fontSize = 15.sp
-    ),
-    labelLarge = androidx.compose.material3.Typography().labelLarge.copy(
-        fontFamily = FontFamily.Default, fontWeight = FontWeight.SemiBold, fontSize = 15.sp
-    ),
-    bodySmall = androidx.compose.material3.Typography().bodySmall.copy(
-        fontFamily = FontFamily.Default, fontWeight = FontWeight.Medium, fontSize = 12.sp
-    )
-)
+/**
+ * Semantic tokens the Material color roles don't cover — the faint white/black
+ * alpha layers the design leans on. Use these instead of inline Color(0x??FFFFFF)
+ * literals so screens stay consistent and re-skinnable (D19).
+ */
+object OffneticColors {
+    val textPrimary = Color.White
+    val textSecondary = Color(0x99FFFFFF)
+    val textMuted = Color(0x73FFFFFF)
+    val textFaint = Color(0x59FFFFFF)
+    val textDisabled = Color(0x4DFFFFFF)
+    val textHint = Color(0x40FFFFFF)
+    val textGhost = Color(0x33FFFFFF)
 
-val Shapes = androidx.compose.material3.Shapes(
-    extraSmall = androidx.compose.foundation.shape.RoundedCornerShape(4.dp),
-    small = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
-    medium = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
-    large = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
-    extraLarge = androidx.compose.foundation.shape.RoundedCornerShape(24.dp)
-)
+    val surfaceCard = Color(0x0DFFFFFF)
+    val surfaceChip = Color(0x12FFFFFF)
+    val surfaceBubble = Color(0x14FFFFFF)
+    val surfaceRaised = Color(0x1AFFFFFF)
+    val borderSubtle = Color(0x0FFFFFFF)
+    val borderFaint = Color(0x08FFFFFF)
 
-@Composable
-fun OffneticColors(
-    darkTheme: Boolean = true,
-    content: @Composable () -> Unit
-) {
-    MaterialTheme(
-        colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme,
-        typography = Typography,
-        shapes = Shapes,
-        content = content
-    )
+    val accentGreen = Color(0xFF4ADE80)
+    val accentBlue = Color(0xFF60A5FA)
+    val accentLink = Color(0xFF3B82F6)
+    val danger = Color(0xFFEF4444)
+    val dangerSurface = Color(0x1AEF4444)
 }

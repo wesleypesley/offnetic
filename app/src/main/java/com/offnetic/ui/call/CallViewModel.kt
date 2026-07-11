@@ -232,7 +232,7 @@ class CallViewModel @AssistedInject constructor(
 
     private fun launchIncomingTimeout() {
         timeoutJob = internalScope.launch {
-            delay(60_000L)
+            delay(com.offnetic.config.OffneticConfig.CALL_TIMEOUT_MS)
             if (callStateFlow.value.phase == CallPhase.INCOMING) {
                 callWasMissed = true
                 callStateFlow.update { it.copy(phase = CallPhase.ENDED, error = "Missed call") }

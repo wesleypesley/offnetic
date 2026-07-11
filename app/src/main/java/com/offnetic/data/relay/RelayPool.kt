@@ -98,12 +98,7 @@ class RelayPool(
     }
 
     companion object {
-        val DEFAULT_RELAYS = listOf(
-            "wss://relay.damus.io",
-            "wss://nos.lol",
-            "wss://relay.primal.net",
-            "wss://offchain.pub"
-        )
+        val DEFAULT_RELAYS = com.offnetic.config.OffneticConfig.DEFAULT_RELAYS
 
         fun create(
             scope: CoroutineScope,

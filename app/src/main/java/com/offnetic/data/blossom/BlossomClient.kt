@@ -27,11 +27,7 @@ class BlossomClient @Inject constructor(
     @Blossom private val okHttpClient: OkHttpClient
 ) {
     companion object {
-        val DEFAULT_SERVERS = listOf(
-            "https://nostr.download",
-            "https://cdn.hzrd149.com",
-            "https://blossom.dreamith.to"
-        )
+        val DEFAULT_SERVERS = com.offnetic.config.OffneticConfig.DEFAULT_BLOSSOM_SERVERS
         private const val KIND_BLOSSOM_AUTH = 24242
     }
 

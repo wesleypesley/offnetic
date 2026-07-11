@@ -95,7 +95,31 @@ class CallActivity : ComponentActivity() {
 
         webRtcManager.initialize()
         bindViews()
+        applyWindowInsets()
         setupCall()
+    }
+
+    // Replaces the layout's static paddings with real system-bar/cutout insets so the
+    // header, PiP, and controls stay clear of tall status bars and gesture nav (H21-H23)
+    private fun applyWindowInsets() {
+        val header = findViewById<View>(R.id.call_header)
+        val controls = findViewById<View>(R.id.call_controls)
+        val pip = findViewById<View>(R.id.pip_container)
+        val density = resources.displayMetrics.density
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(findViewById(android.R.id.content)) { _, insets ->
+            val bars = insets.getInsets(
+                androidx.core.view.WindowInsetsCompat.Type.systemBars() or
+                    androidx.core.view.WindowInsetsCompat.Type.displayCutout()
+            )
+            val basePad = (16 * density).toInt()
+            header.setPadding(header.paddingLeft, maxOf(bars.top + basePad, (56 * density).toInt()), header.paddingRight, header.paddingBottom)
+            controls.setPadding(controls.paddingLeft, controls.paddingTop, controls.paddingRight, maxOf(bars.bottom + basePad, (48 * density).toInt()))
+            (pip.layoutParams as? android.widget.FrameLayout.LayoutParams)?.let { lp ->
+                lp.topMargin = bars.top + (96 * density).toInt()
+                pip.layoutParams = lp
+            }
+            insets
+        }
     }
 
     override fun onNewIntent(intent: android.content.Intent) {
@@ -124,7 +148,7 @@ class CallActivity : ComponentActivity() {
             pipVisible = true
             pipRenderer.visibility = View.VISIBLE
             cameraSlash.visibility = View.GONE
-            toggleCameraBtn.setColorFilter(0xFFFFFFFF.toInt())
+            toggleCameraBtn.setColorFilter(getColor(R.color.call_control_active))
             flipCameraBtn.visibility = View.VISIBLE
         } else if (!cameraEnabled && pendingCameraEnable) {
             pendingCameraEnable = false
@@ -202,17 +226,17 @@ class CallActivity : ComponentActivity() {
         fullscreenRenderer.visibility = View.INVISIBLE
         durationTv.visibility = View.GONE
         cameraOffOverlay.visibility = View.GONE
-        toggleCameraBtn.setColorFilter(0x40FFFFFF)
+        toggleCameraBtn.setColorFilter(getColor(R.color.call_control_disabled))
         cameraSlash.visibility = View.VISIBLE
         flipCameraBtn.visibility = View.GONE
-        toggleMicBtn.setColorFilter(0xFFFFFFFF.toInt())
+        toggleMicBtn.setColorFilter(getColor(R.color.call_control_active))
         micSlash.visibility = View.GONE
         toggleSpeakerBtn.setImageResource(R.drawable.ic_call_speaker)
-        toggleSpeakerBtn.setColorFilter(0xFFFFFFFF.toInt())
+        toggleSpeakerBtn.setColorFilter(getColor(R.color.call_control_active))
 
         scope.launch {
             val contact = contactDao.getByPublicKey(peerPublicKey)
-            val displayName = contact?.displayName ?: peerPublicKey.take(12)
+            val displayName = contact?.displayName ?: peerPublicKey.take(KEY_FALLBACK_NAME_CHARS)
 
             peerNameTv.text = displayName
             cameraOffNameTv.text = displayName.firstOrNull()?.uppercaseChar()?.toString() ?: "?"
@@ -315,7 +339,7 @@ class CallActivity : ComponentActivity() {
                 finished = true
                 finishRunnable?.let { fullscreenRenderer.removeCallbacks(it) }
                 finishRunnable = Runnable { finish() }
-                fullscreenRenderer.postDelayed(finishRunnable!!, 1500L)
+                fullscreenRenderer.postDelayed(finishRunnable!!, ENDED_FINISH_DELAY_MS)
                 cameraOffOverlay.visibility = View.GONE
             }
         }
@@ -327,10 +351,10 @@ class CallActivity : ComponentActivity() {
         }
 
         micSlash.visibility = if (state.isMuted) View.VISIBLE else View.GONE
-        toggleMicBtn.setColorFilter(if (state.isMuted) 0x40FFFFFF else 0xFFFFFFFF.toInt())
+        toggleMicBtn.setColorFilter(if (state.isMuted) getColor(R.color.call_control_disabled) else getColor(R.color.call_control_active))
 
         toggleSpeakerBtn.setImageResource(if (state.isSpeakerOn) R.drawable.ic_call_speaker else R.drawable.ic_call_earpiece)
-        toggleSpeakerBtn.setColorFilter(if (state.isSpeakerOn) 0xFFFFFFFF.toInt() else 0x40FFFFFF)
+        toggleSpeakerBtn.setColorFilter(if (state.isSpeakerOn) getColor(R.color.call_control_active) else getColor(R.color.call_control_disabled))
     }
 
     private fun updateVideoFeeds() {
@@ -403,7 +427,7 @@ class CallActivity : ComponentActivity() {
         cameraEnabled = true
         callViewModel.setCameraEnabled(true)
         cameraSlash.visibility = View.GONE
-        toggleCameraBtn.setColorFilter(0xFFFFFFFF.toInt())
+        toggleCameraBtn.setColorFilter(getColor(R.color.call_control_active))
         flipCameraBtn.visibility = View.VISIBLE
         if (tracksBound && !pipVisible) {
             pipVisible = true
@@ -417,7 +441,7 @@ class CallActivity : ComponentActivity() {
         cameraEnabled = false
         callViewModel.setCameraEnabled(false)
         cameraSlash.visibility = View.VISIBLE
-        toggleCameraBtn.setColorFilter(0x40FFFFFF)
+        toggleCameraBtn.setColorFilter(getColor(R.color.call_control_disabled))
         flipCameraBtn.visibility = View.GONE
         pipVisible = false
         pipRenderer.visibility = View.INVISIBLE
@@ -450,5 +474,12 @@ class CallActivity : ComponentActivity() {
             fullscreenRenderer.release()
         }
         super.onDestroy()
+    }
+
+    companion object {
+        // Fallback name length when no contact row exists (H25)
+        private const val KEY_FALLBACK_NAME_CHARS = 12
+        // Grace period showing "Call ended" before the activity closes (H26)
+        private const val ENDED_FINISH_DELAY_MS = 1500L
     }
 }

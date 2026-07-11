@@ -68,7 +68,7 @@ class NcapManagerImpl @Inject constructor(
 
     companion object {
         const val SERVICE_ID = "com.offnetic.nearby"
-        private const val PROXIMITY_SILENT_MS = 5 * 60 * 1000L
+        private const val PROXIMITY_SILENT_MS = com.offnetic.config.OffneticConfig.PROXIMITY_SILENT_MS
         private const val PING_COOLDOWN_MS = 15 * 60 * 1000L
         private const val MAX_DECRYPT_FAILURES = 3
         private const val FILE_META_TTL_MS = 5 * 60 * 1000L
@@ -560,8 +560,8 @@ class NcapManagerImpl @Inject constructor(
         if (isEmpty) {
             android.util.Log.e("NcapConn", "findOrAwait: empty — waiting for foreground service discovery")
         }
-        for (attempt in 1..30) {
-            kotlinx.coroutines.delay(2000L)
+        for (attempt in 1..com.offnetic.config.OffneticConfig.ENDPOINT_RETRY_ATTEMPTS) {
+            kotlinx.coroutines.delay(com.offnetic.config.OffneticConfig.ENDPOINT_RETRY_INTERVAL_MS)
             val found2 = endpointPeers.entries.find { it.value.publicKey == publicKey }?.key
             if (found2 != null) {
                 android.util.Log.e("NcapConn", "findOrAwait: found on attempt $attempt → $found2")
@@ -615,7 +615,7 @@ class NcapManagerImpl @Inject constructor(
             Timber.d("sendFile: call active (count=${callActiveCount.get()}), rejecting file send")
             throw IllegalStateException("Cannot send files during an active call")
         }
-        val MAX_FILE_SIZE = 100L * 1024 * 1024
+        val MAX_FILE_SIZE = com.offnetic.config.OffneticConfig.MAX_FILE_SIZE_BYTES
         if (fileSize > MAX_FILE_SIZE) {
             throw IllegalArgumentException("File exceeds 100MB limit")
         }

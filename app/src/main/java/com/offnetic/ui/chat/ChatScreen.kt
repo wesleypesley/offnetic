@@ -37,9 +37,12 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
@@ -53,6 +56,15 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withStyle
 import com.offnetic.R
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -178,22 +190,43 @@ fun ChatScreen(
                 onCall = { onCall(viewModel.contactPublicKey) }
             )
 
-            LazyColumn(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .padding(horizontal = Spacing.lg),
-                state = listState,
-                verticalArrangement = Arrangement.spacedBy(Spacing.xs)
-            ) {
-                items(messages, key = { it.id }) { message ->
-                    MessageBubble(
-                        message = message,
-                        isMine = message.senderPublicKey == myPublicKey,
-                        onDelete = { viewModel.deleteMessage(message.id) },
-                        onCancel = { viewModel.cancelMessage(message.id) },
-                        onRetry = { viewModel.retryMessage(message.id) }
+            if (messages.isEmpty()) {
+                // Empty state instead of a blank void (D17)
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = stringResource(R.string.chat_empty),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color(0x40FFFFFF)
                     )
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .padding(horizontal = Spacing.lg),
+                    state = listState,
+                    verticalArrangement = Arrangement.spacedBy(Spacing.xs)
+                ) {
+                    itemsIndexed(messages, key = { _, m -> m.id }) { index, message ->
+                        // Day separator whenever the calendar day changes (D12)
+                        val prev = if (index > 0) messages[index - 1] else null
+                        if (prev == null || !isSameDay(prev.timestamp, message.timestamp)) {
+                            DateSeparator(timestamp = message.timestamp)
+                        }
+                        MessageBubble(
+                            message = message,
+                            isMine = message.senderPublicKey == myPublicKey,
+                            onDelete = { viewModel.deleteMessage(message.id) },
+                            onCancel = { viewModel.cancelMessage(message.id) },
+                            onRetry = { viewModel.retryMessage(message.id) }
+                        )
+                    }
                 }
             }
 
@@ -233,11 +266,11 @@ private fun ChatHeader(
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onBack) {
-                Text(
-                    text = "←",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 20.sp,
-                    color = Color.White
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = stringResource(R.string.cd_back),
+                    tint = Color.White,
+                    modifier = Modifier.size(22.dp)
                 )
             }
 
@@ -253,9 +286,9 @@ private fun ChatHeader(
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     val (targetColor, statusLabel) = when (reachability) {
-                        ChatReachability.LOCAL -> Color(0xFF4ADE80) to "Nearby"
-                        ChatReachability.INTERNET_RELAY -> Color(0xFF60A5FA) to "Internet"
-                        ChatReachability.OFFLINE -> Color(0x40FFFFFF) to "Offline"
+                        ChatReachability.LOCAL -> Color(0xFF4ADE80) to stringResource(R.string.chat_status_nearby)
+                        ChatReachability.INTERNET_RELAY -> Color(0xFF60A5FA) to stringResource(R.string.chat_status_internet)
+                        ChatReachability.OFFLINE -> Color(0x40FFFFFF) to stringResource(R.string.chat_status_offline)
                     }
                     val dotColor by animateColorAsState(targetColor, animationSpec = tween(300), label = "dot")
                     Box(
@@ -277,7 +310,7 @@ private fun ChatHeader(
             IconButton(onClick = onCall, enabled = reachability != ChatReachability.OFFLINE) {
                 Icon(
                     painter = painterResource(R.drawable.ic_phone_outlined),
-                    contentDescription = "Call",
+                    contentDescription = stringResource(R.string.cd_call),
                     tint = if (reachability != ChatReachability.OFFLINE) Color(0xB3FFFFFF) else Color(0x40FFFFFF),
                     modifier = Modifier.size(20.dp)
                 )
@@ -335,7 +368,7 @@ private fun InputBar(
                 modifier = Modifier.weight(1f),
                 placeholder = {
                     Text(
-                        "Message",
+                        stringResource(R.string.chat_input_placeholder),
                         style = MaterialTheme.typography.bodyMedium,
                         color = Color(0x40FFFFFF)
                     )
@@ -359,7 +392,7 @@ private fun InputBar(
             ) {
                 Icon(
                     painter = painterResource(R.drawable.ic_send),
-                    contentDescription = "Send",
+                    contentDescription = stringResource(R.string.cd_send),
                     tint = if (textInput.isNotBlank()) Color.White else Color(0x40FFFFFF)
                 )
             }
@@ -419,13 +452,13 @@ private fun MessageBubble(
                             Spacer(modifier = Modifier.height(Spacing.sm))
                             Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                                 Text(
-                                    text = "Retry",
+                                    text = stringResource(R.string.action_retry),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = Color(0xFF4ADE80),
                                     modifier = Modifier.clickable { onRetry() }
                                 )
                                 Text(
-                                    text = "Delete",
+                                    text = stringResource(R.string.action_delete),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = Color(0xFFEF4444),
                                     modifier = Modifier.clickable { onDelete() }
@@ -433,12 +466,9 @@ private fun MessageBubble(
                             }
                         }
                         Message.TYPE_TEXT -> {
-                            Text(
+                            LinkifiedText(
                                 text = message.content,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = Color(0xE6FFFFFF),
-                                maxLines = 20,
-                                overflow = TextOverflow.Ellipsis
+                                onLongPress = { showMenu = true }
                             )
                         }
                         Message.TYPE_VOICE_NOTE -> {
@@ -481,7 +511,7 @@ private fun MessageBubble(
                                                 mediaPlayer = mp
                                                 isPlaying = true
                                             } catch (_: Exception) {
-                                                Toast.makeText(context, "Cannot play voice note", Toast.LENGTH_SHORT).show()
+                                                Toast.makeText(context, context.getString(R.string.chat_cannot_play_voice), Toast.LENGTH_SHORT).show()
                                             }
                                         }
                                     }
@@ -573,9 +603,23 @@ private fun MessageBubble(
                 expanded = showMenu,
                 onDismissRequest = { showMenu = false }
             ) {
+                if (message.type == Message.TYPE_TEXT) {
+                    val clipboard = LocalClipboardManager.current
+                    val context = LocalContext.current
+                    DropdownMenuItem(
+                        text = {
+                            Text(stringResource(R.string.action_copy), style = MaterialTheme.typography.labelLarge, color = Color.White)
+                        },
+                        onClick = {
+                            showMenu = false
+                            clipboard.setText(AnnotatedString(message.content))
+                            Toast.makeText(context, context.getString(R.string.chat_message_copied), Toast.LENGTH_SHORT).show()
+                        }
+                    )
+                }
                 DropdownMenuItem(
                     text = {
-                        Text("Delete for me", style = MaterialTheme.typography.labelLarge, color = Color(0xFFEF4444))
+                        Text(stringResource(R.string.chat_delete_for_me), style = MaterialTheme.typography.labelLarge, color = Color(0xFFEF4444))
                     },
                     onClick = {
                         showMenu = false
@@ -585,7 +629,7 @@ private fun MessageBubble(
                 if (isMine && message.deliveryState == MessageDeliveryState.SAVED && message.type != Message.TYPE_CANCELLED) {
                     DropdownMenuItem(
                         text = {
-                            Text("Cancel sending", style = MaterialTheme.typography.labelLarge, color = Color(0xFFEF4444))
+                            Text(stringResource(R.string.chat_cancel_sending), style = MaterialTheme.typography.labelLarge, color = Color(0xFFEF4444))
                         },
                         onClick = {
                             showMenu = false
@@ -608,12 +652,12 @@ private fun MessageBubble(
             if (isMine && message.type != Message.TYPE_CANCELLED && message.type != Message.TYPE_SYSTEM) {
                 Spacer(modifier = Modifier.width(Spacing.xs))
                 val (statusColor, statusLabel) = when (message.deliveryState) {
-                    MessageDeliveryState.SAVED -> Color(0x40FFFFFF) to "Saved"
-                    MessageDeliveryState.SENT_LOCAL -> Color(0x66FFFFFF) to "Sending"
-                    MessageDeliveryState.SENT_RELAY -> Color(0x66FFFFFF) to "Relayed"
-                    MessageDeliveryState.DELIVERED -> Color(0xCCFFFFFF) to "Delivered"
-                    MessageDeliveryState.READ -> Color(0xFF4ADE80) to "Seen"
-                    MessageDeliveryState.FAILED -> Color(0xFFEF4444) to "Failed"
+                    MessageDeliveryState.SAVED -> Color(0x40FFFFFF) to stringResource(R.string.chat_delivery_saved)
+                    MessageDeliveryState.SENT_LOCAL -> Color(0x66FFFFFF) to stringResource(R.string.chat_delivery_sending)
+                    MessageDeliveryState.SENT_RELAY -> Color(0x66FFFFFF) to stringResource(R.string.chat_delivery_relayed)
+                    MessageDeliveryState.DELIVERED -> Color(0xCCFFFFFF) to stringResource(R.string.chat_delivery_delivered)
+                    MessageDeliveryState.READ -> Color(0xFF4ADE80) to stringResource(R.string.chat_delivery_seen)
+                    MessageDeliveryState.FAILED -> Color(0xFFEF4444) to stringResource(R.string.chat_delivery_failed)
                 }
                 Text(
                     text = statusLabel,
@@ -644,14 +688,16 @@ private fun ImageThumbnail(
 
     LaunchedEffect(path) {
         try {
-            val opts = BitmapFactory.Options().apply { inSampleSize = 2 }
             bitmap = withContext(Dispatchers.IO) {
-                if (path.startsWith("content://")) {
-                    context.contentResolver.openInputStream(android.net.Uri.parse(path))
-                        ?.use { BitmapFactory.decodeStream(it, null, opts) }
-                } else {
-                    BitmapFactory.decodeFile(path, opts)
-                }
+                // Two-pass decode: read bounds, then sample down to ~1280px on the long
+                // edge — the fixed inSampleSize=2 under-sampled large camera photos and
+                // over-sampled small ones (D37)
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                decodeAt(context, path, bounds)
+                val longEdge = maxOf(bounds.outWidth, bounds.outHeight)
+                var sample = 1
+                while (longEdge / (sample * 2) >= 1280) sample *= 2
+                decodeAt(context, path, BitmapFactory.Options().apply { inSampleSize = sample })
             }
         } catch (_: Exception) {
             failed = true
@@ -669,20 +715,20 @@ private fun ImageThumbnail(
         if (bmp != null) {
             Image(
                 bitmap = bmp.asImageBitmap(),
-                contentDescription = "Photo",
+                contentDescription = stringResource(R.string.cd_photo),
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop
             )
         } else if (!failed) {
             Text(
-                text = "Loading...",
+                text = stringResource(R.string.loading),
                 style = MaterialTheme.typography.bodySmall,
                 color = Color(0x4DFFFFFF),
                 modifier = Modifier.padding(Spacing.xl)
             )
         } else {
             Text(
-                text = "Could not load preview",
+                text = stringResource(R.string.chat_preview_failed),
                 style = MaterialTheme.typography.bodySmall,
                 color = Color(0x40FFFFFF),
                 modifier = Modifier.padding(Spacing.xl)
@@ -737,7 +783,7 @@ private fun VideoThumbnail(
         if (bmp != null) {
             Image(
                 bitmap = bmp.asImageBitmap(),
-                contentDescription = "Video",
+                contentDescription = stringResource(R.string.cd_video),
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop
             )
@@ -760,14 +806,14 @@ private fun VideoThumbnail(
             }
         } else if (!failed) {
             Text(
-                text = "Loading...",
+                text = stringResource(R.string.loading),
                 style = MaterialTheme.typography.bodySmall,
                 color = Color(0x4DFFFFFF),
                 modifier = Modifier.padding(Spacing.xl)
             )
         } else {
             Text(
-                text = "Could not load preview",
+                text = stringResource(R.string.chat_preview_failed),
                 style = MaterialTheme.typography.bodySmall,
                 color = Color(0x40FFFFFF),
                 modifier = Modifier.padding(Spacing.xl)
@@ -814,7 +860,7 @@ private fun DocAttachment(
                 overflow = TextOverflow.Ellipsis
             )
             Text(
-                text = "Tap to open",
+                text = stringResource(R.string.chat_tap_to_open),
                 style = MaterialTheme.typography.bodySmall,
                 color = Color(0x40FFFFFF)
             )
@@ -829,7 +875,7 @@ private fun openFile(context: android.content.Context, path: String, mimeType: S
         } else {
             val file = java.io.File(path)
             if (!file.exists()) {
-                Toast.makeText(context, "File not found", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, context.getString(R.string.chat_file_not_found), Toast.LENGTH_SHORT).show()
                 return
             }
             FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
@@ -841,10 +887,10 @@ private fun openFile(context: android.content.Context, path: String, mimeType: S
         if (intent.resolveActivity(context.packageManager) != null) {
             context.startActivity(intent)
         } else {
-            Toast.makeText(context, "No app can open this file", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, context.getString(R.string.chat_no_app_for_file), Toast.LENGTH_SHORT).show()
         }
     } catch (e: Exception) {
-        Toast.makeText(context, "Cannot open file", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, context.getString(R.string.chat_cannot_open_file), Toast.LENGTH_SHORT).show()
     }
 }
 
@@ -875,7 +921,22 @@ private fun inferMimeType(fileName: String): String {
         "html" -> "text/html"
         "csv" -> "text/csv"
         "m4a", "aac" -> "audio/mp4"
+        "mp3" -> "audio/mpeg"
+        "ogg", "opus" -> "audio/ogg"
+        "wav" -> "audio/wav"
+        "flac" -> "audio/flac"
+        "heic", "heif" -> "image/heic"
+        "avi" -> "video/x-msvideo"
         else -> "application/octet-stream"
+    }
+}
+
+private fun decodeAt(context: android.content.Context, path: String, opts: BitmapFactory.Options): Bitmap? {
+    return if (path.startsWith("content://")) {
+        context.contentResolver.openInputStream(android.net.Uri.parse(path))
+            ?.use { BitmapFactory.decodeStream(it, null, opts) }
+    } else {
+        BitmapFactory.decodeFile(path, opts)
     }
 }
 
@@ -901,3 +962,90 @@ private fun NoiseOverlay() {
 private val timeFormatter = SimpleDateFormat("HH:mm", Locale.getDefault())
 
 private fun formatTime(timestamp: Long): String = timeFormatter.format(Date(timestamp))
+
+private val URL_REGEX = Regex("""https?://\S+""")
+
+// Text bubble with tappable URLs (C1). Long-press is handled here too because the
+// gesture detector consumes the touch stream, so the parent's combinedClickable
+// would never see it.
+@Composable
+private fun LinkifiedText(text: String, onLongPress: () -> Unit) {
+    val uriHandler = LocalUriHandler.current
+    val annotated = remember(text) {
+        buildAnnotatedString {
+            var last = 0
+            for (m in URL_REGEX.findAll(text)) {
+                append(text.substring(last, m.range.first))
+                pushStringAnnotation("URL", m.value)
+                withStyle(SpanStyle(color = Color(0xFF60A5FA), textDecoration = TextDecoration.Underline)) {
+                    append(m.value)
+                }
+                pop()
+                last = m.range.last + 1
+            }
+            append(text.substring(last))
+        }
+    }
+    var layoutResult by remember { mutableStateOf<androidx.compose.ui.text.TextLayoutResult?>(null) }
+    Text(
+        text = annotated,
+        style = MaterialTheme.typography.bodyMedium,
+        color = Color(0xE6FFFFFF),
+        maxLines = 20,
+        overflow = TextOverflow.Ellipsis,
+        onTextLayout = { layoutResult = it },
+        modifier = Modifier.pointerInput(annotated) {
+            detectTapGestures(
+                onLongPress = { onLongPress() },
+                onTap = { pos ->
+                    val layout = layoutResult ?: return@detectTapGestures
+                    val offset = layout.getOffsetForPosition(pos)
+                    annotated.getStringAnnotations("URL", offset, offset).firstOrNull()?.let { link ->
+                        runCatching { uriHandler.openUri(link.item) }
+                    }
+                }
+            )
+        }
+    )
+}
+
+// Centered day chip between messages from different calendar days (D12)
+@Composable
+private fun DateSeparator(timestamp: Long) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = Spacing.sm),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = formatDateSeparator(
+                timestamp,
+                stringResource(R.string.chat_today),
+                stringResource(R.string.chat_yesterday)
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            color = Color(0x40FFFFFF),
+            modifier = Modifier
+                .clip(RoundedCornerShape(10.dp))
+                .background(Color(0x0DFFFFFF))
+                .padding(horizontal = Spacing.md, vertical = Spacing.xxs)
+        )
+    }
+}
+
+private fun isSameDay(a: Long, b: Long): Boolean {
+    val ca = java.util.Calendar.getInstance().apply { timeInMillis = a }
+    val cb = java.util.Calendar.getInstance().apply { timeInMillis = b }
+    return ca.get(java.util.Calendar.YEAR) == cb.get(java.util.Calendar.YEAR) &&
+        ca.get(java.util.Calendar.DAY_OF_YEAR) == cb.get(java.util.Calendar.DAY_OF_YEAR)
+}
+
+private fun formatDateSeparator(timestamp: Long, today: String, yesterday: String): String {
+    val now = System.currentTimeMillis()
+    return when {
+        isSameDay(timestamp, now) -> today
+        isSameDay(timestamp, now - 86_400_000L) -> yesterday
+        else -> SimpleDateFormat("MMM d, yyyy", Locale.getDefault()).format(Date(timestamp))
+    }
+}

@@ -1,6 +1,7 @@
 package com.offnetic.ui.theme
 
 import android.app.Activity
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -19,7 +20,12 @@ fun Theme(
         activity?.let { applyInsetsStyle(it, darkTheme) }
     }
 
-    OffneticColors(darkTheme = darkTheme, content = content)
+    MaterialTheme(
+        colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme,
+        typography = OffneticTypography,
+        shapes = OffneticShapes,
+        content = content
+    )
 }
 
 private fun applyInsetsStyle(activity: Activity, darkTheme: Boolean) {

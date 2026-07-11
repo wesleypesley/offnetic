@@ -1,11 +1,115 @@
 <resources>
     <string name="app_name">Offnetic</string>
+
+    <!-- Common actions -->
+    <string name="action_continue">Continue</string>
+    <string name="action_retry">Retry</string>
+    <string name="action_close">Close</string>
+    <string name="action_accept">Accept</string>
+    <string name="action_ignore">Ignore</string>
+    <string name="action_back">← Back</string>
+    <string name="action_copy">Copy</string>
+    <string name="action_delete">Delete</string>
+    <string name="loading">Loading…</string>
+
+    <!-- Permissions -->
     <string name="permission_bluetooth_rationale">Used only for local device discovery, never stored or shared</string>
     <string name="permission_location_rationale">Required by Android for Wi-Fi Direct and Bluetooth scanning</string>
     <string name="permission_camera_rationale">Used to scan QR codes when adding trusted contacts</string>
     <string name="permission_microphone_rationale">Powers end-to-end encrypted voice messages and calls</string>
     <string name="permission_notifications_rationale">Get pinged when a trusted contact is physically nearby</string>
     <string name="permission_storage_rationale">Required to send files and media to contacts</string>
+
+    <!-- Permission onboarding slides -->
+    <string name="perm_title_nearby">Find people\nnearby</string>
+    <string name="perm_desc_nearby">Offnetic uses Bluetooth and Wi-Fi to detect trusted contacts around you. Your location is never stored or shared — it never leaves your device.</string>
+    <string name="perm_btn_connectivity">Allow Connectivity</string>
+    <string name="perm_title_camera_mic">Scan &amp; speak\nfreely</string>
+    <string name="perm_desc_camera_mic">Camera is used to scan QR codes when adding trusted contacts. Microphone powers end-to-end encrypted voice messages and calls.</string>
+    <string name="perm_btn_camera_mic">Allow Camera &amp; Mic</string>
+    <string name="perm_title_notifications">Stay in\nthe loop</string>
+    <string name="perm_desc_notifications">Get pinged when a trusted contact is physically nearby. No background tracking — alerts fire only when someone you know is close.</string>
+    <string name="perm_btn_notifications">Allow Notifications</string>
+    <string name="perm_chip_bluetooth">Bluetooth</string>
+    <string name="perm_chip_nearby_wifi">Nearby Wi-Fi</string>
+    <string name="perm_chip_location">Location</string>
+    <string name="perm_chip_camera">Camera</string>
+    <string name="perm_chip_microphone">Microphone</string>
+    <string name="perm_chip_notifications">Notifications</string>
+    <string name="perm_step_tag">%1$02d / %2$02d</string>
+    <string name="perm_change_later">You can change this anytime in Settings</string>
+
+    <!-- Identity generation -->
+    <string name="identity_creating">Creating your identity</string>
+    <string name="identity_created">Identity created</string>
+    <string name="identity_error_title">Something went wrong</string>
+    <string name="identity_error_body">Identity generation failed. Please try again.</string>
+    <string name="identity_generating_desc">Your cryptographic identity is being generated entirely on this device.</string>
+    <string name="identity_sealed_desc">Your keys are sealed in the Android Keystore.</string>
+    <string name="identity_step_keypair">Generating ECDH P-256 keypair</string>
+    <string name="identity_step_public">Deriving public identity</string>
+    <string name="identity_step_pqxdh">Initialising PQXDH bundle</string>
+    <string name="identity_step_keystore">Sealing into Keystore</string>
+    <string name="identity_step_secured">Identity secured</string>
+
+    <!-- Profile setup -->
+    <string name="profile_setup_tag">SET UP PROFILE</string>
+    <string name="profile_setup_question">How should people see you?</string>
+    <string name="profile_setup_hint">Your name is only visible to trusted contacts you’ve paired with.</string>
+    <string name="profile_setup_username_label">USERNAME</string>
+    <string name="profile_setup_placeholder">Enter a username</string>
+    <string name="profile_setup_invalid">Only letters, numbers, and underscores</string>
+    <string name="profile_setup_rules">Letters, numbers, and underscores only</string>
+    <string name="profile_setup_permanent">⚠ This cannot be changed later.</string>
+    <string name="profile_setup_enter">Enter Offnetic</string>
+    <string name="profile_setup_save_failed">Couldn’t save profile — please try again</string>
+
+    <!-- Chat list -->
+    <string name="chat_list_discovering">Discovering nearby</string>
+    <string name="chat_list_offline">Offline</string>
+    <string name="chat_list_empty">No conversations yet</string>
+    <string name="profile_title">Profile</string>
+    <string name="profile_username_label">Username</string>
+    <string name="profile_no_username">No username set</string>
+    <string name="cd_scan_qr">Scan QR</string>
+    <string name="cd_requests">Requests</string>
+    <string name="cd_shutdown">Shutdown</string>
+    <string name="cd_settings">Settings</string>
+
+    <!-- Connection requests -->
+    <string name="requests_title">Connection Requests</string>
+    <string name="requests_empty">No pending connection requests</string>
+
+    <!-- Chat -->
+    <string name="chat_empty">No messages yet — say hello</string>
+    <string name="chat_message_copied">Message copied</string>
+    <string name="chat_today">Today</string>
+    <string name="chat_yesterday">Yesterday</string>
+    <string name="chat_input_placeholder">Message</string>
+    <string name="chat_status_nearby">Nearby</string>
+    <string name="chat_status_internet">Internet</string>
+    <string name="chat_status_offline">Offline</string>
+    <string name="chat_delivery_saved">Saved</string>
+    <string name="chat_delivery_sending">Sending</string>
+    <string name="chat_delivery_relayed">Relayed</string>
+    <string name="chat_delivery_delivered">Delivered</string>
+    <string name="chat_delivery_seen">Seen</string>
+    <string name="chat_delivery_failed">Failed</string>
+    <string name="chat_delete_for_me">Delete for me</string>
+    <string name="chat_cancel_sending">Cancel sending</string>
+    <string name="chat_tap_to_open">Tap to open</string>
+    <string name="chat_preview_failed">Could not load preview</string>
+    <string name="chat_cannot_play_voice">Cannot play voice note</string>
+    <string name="chat_file_not_found">File not found</string>
+    <string name="chat_no_app_for_file">No app can open this file</string>
+    <string name="chat_cannot_open_file">Cannot open file</string>
+    <string name="cd_call">Call</string>
+    <string name="cd_send">Send</string>
+    <string name="cd_photo">Photo</string>
+    <string name="cd_video">Video</string>
+    <string name="cd_back">Back</string>
+
+    <!-- Call -->
     <string name="call_calling">Calling…</string>
     <string name="call_connecting">Connecting…</string>
     <string name="call_incoming">Incoming call</string>

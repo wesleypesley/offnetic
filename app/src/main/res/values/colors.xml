@@ -14,4 +14,8 @@
     <color name="design_default_color_error">#EF4444</color>
     <color name="design_default_color_background">#0A0A0A</color>
     <color name="design_default_color_surface">#141414</color>
+
+    <!-- Call screen control tints (H24) -->
+    <color name="call_control_active">#FFFFFFFF</color>
+    <color name="call_control_disabled">#40FFFFFF</color>
 </resources>

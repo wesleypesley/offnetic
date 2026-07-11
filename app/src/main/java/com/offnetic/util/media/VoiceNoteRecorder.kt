@@ -15,8 +15,8 @@ class VoiceNoteRecorder @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
     companion object {
-        const val MAX_DURATION_MS = 2 * 60 * 1000
-        const val MAX_FILE_SIZE = (1.5 * 1024 * 1024).toLong()
+        const val MAX_DURATION_MS = com.offnetic.config.OffneticConfig.VOICE_NOTE_MAX_DURATION_MS
+        const val MAX_FILE_SIZE = com.offnetic.config.OffneticConfig.VOICE_NOTE_MAX_BYTES
     }
 
     private var recorder: MediaRecorder? = null
@@ -42,8 +42,8 @@ class VoiceNoteRecorder @Inject constructor(
             setAudioSource(MediaRecorder.AudioSource.MIC)
             setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
             setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
-            setAudioSamplingRate(16000)
-            setAudioEncodingBitRate(32000)
+            setAudioSamplingRate(com.offnetic.config.OffneticConfig.VOICE_NOTE_SAMPLE_RATE_HZ)
+            setAudioEncodingBitRate(com.offnetic.config.OffneticConfig.VOICE_NOTE_BIT_RATE)
             setOutputFile(outputFile!!.absolutePath)
             setMaxDuration(MAX_DURATION_MS)
             setMaxFileSize(MAX_FILE_SIZE)

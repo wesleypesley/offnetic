@@ -225,7 +225,7 @@ class RelayInboxHandler @Inject constructor(
     private suspend fun handleCallOffer(senderNpub: String, rumor: Rumor) {
         val contact = contactDao.getByNostrPublicKey(senderNpub) ?: return
         val age = System.currentTimeMillis() - rumor.createdAt * 1000L
-        if (age > 45_000L) {
+        if (age > com.offnetic.config.OffneticConfig.STALE_CALL_OFFER_MS) {
             callHistoryDao.insert(
                 CallHistoryEntity(
                     peerPublicKey = contact.publicKey,

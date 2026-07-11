@@ -5,6 +5,7 @@ import android.os.Build
 import timber.log.Timber
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.StringRes
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -26,31 +27,34 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.offnetic.R
+import com.offnetic.ui.theme.OffneticColors
 import com.offnetic.ui.theme.Spacing
+
+private data class PermConfig(
+    @StringRes val titleRes: Int,
+    @StringRes val descRes: Int,
+    @StringRes val chipRes: List<Int>,
+    @StringRes val btnLabelRes: Int,
+    val permissions: Array<String>
+)
 
 private val permConfigs = listOf(
     PermConfig(
-        tag = "01 / 03",
-        title = "Find people\nnearby",
-        desc = "Offnetic uses Bluetooth and Wi-Fi to detect trusted contacts around you. Your location is never stored or shared \u2014 it never leaves your device.",
-        perms = listOf("Bluetooth", "Nearby Wi-Fi", "Location"),
-        btnLabel = "Allow Connectivity",
+        titleRes = R.string.perm_title_nearby,
+        descRes = R.string.perm_desc_nearby,
+        chipRes = listOf(R.string.perm_chip_bluetooth, R.string.perm_chip_nearby_wifi, R.string.perm_chip_location),
+        btnLabelRes = R.string.perm_btn_connectivity,
         permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             arrayOf(
                 Manifest.permission.BLUETOOTH_SCAN,
@@ -71,19 +75,17 @@ private val permConfigs = listOf(
         }
     ),
     PermConfig(
-        tag = "02 / 03",
-        title = "Scan & speak\nfreely",
-        desc = "Camera is used to scan QR codes when adding trusted contacts. Microphone powers end-to-end encrypted voice messages and calls.",
-        perms = listOf("Camera", "Microphone"),
-        btnLabel = "Allow Camera & Mic",
+        titleRes = R.string.perm_title_camera_mic,
+        descRes = R.string.perm_desc_camera_mic,
+        chipRes = listOf(R.string.perm_chip_camera, R.string.perm_chip_microphone),
+        btnLabelRes = R.string.perm_btn_camera_mic,
         permissions = arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
     ),
     PermConfig(
-        tag = "03 / 03",
-        title = "Stay in\nthe loop",
-        desc = "Get pinged when a trusted contact is physically nearby. No background tracking — alerts fire only when someone you know is close.",
-        perms = listOf("Notifications"),
-        btnLabel = "Allow Notifications",
+        titleRes = R.string.perm_title_notifications,
+        descRes = R.string.perm_desc_notifications,
+        chipRes = listOf(R.string.perm_chip_notifications),
+        btnLabelRes = R.string.perm_btn_notifications,
         permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             arrayOf(Manifest.permission.POST_NOTIFICATIONS)
         } else {
@@ -92,27 +94,13 @@ private val permConfigs = listOf(
     )
 )
 
-private data class PermConfig(
-    val tag: String,
-    val title: String,
-    val desc: String,
-    val perms: List<String>,
-    val btnLabel: String,
-    val permissions: Array<String>
-)
-
 @Composable
 fun PermissionSlide(
-    title: String = "",
+    slideIndex: Int,
     onNext: () -> Unit = {}
 ) {
-    val index = when {
-        title.contains("Connectivity") -> 0
-        title.contains("Camera") || title.contains("Microphone") -> 1
-        else -> 2
-    }
+    val index = slideIndex.coerceIn(0, permConfigs.lastIndex)
     val config = permConfigs[index]
-    var visible by remember { mutableStateOf(false) }
 
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -125,16 +113,11 @@ fun PermissionSlide(
         onNext()
     }
 
-    LaunchedEffect(Unit) {
-        kotlinx.coroutines.delay(60)
-        visible = true
-    }
-
     Box(
         modifier = Modifier
             .fillMaxSize()
             .safeDrawingPadding()
-            .background(Color(0xFF0A0A0A))
+            .background(MaterialTheme.colorScheme.background)
     ) {
         NoiseOverlay()
 
@@ -147,7 +130,7 @@ fun PermissionSlide(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.Center
             ) {
-                (0..2).forEach { i ->
+                permConfigs.indices.forEach { i ->
                     Box(
                         modifier = Modifier
                             .size(
@@ -155,9 +138,9 @@ fun PermissionSlide(
                                 height = 6.dp
                             )
                             .clip(RoundedCornerShape(3.dp))
-                            .background(if (i == index) Color.White else Color(0x2DFFFFFF))
+                            .background(if (i == index) OffneticColors.textPrimary else Color(0x2DFFFFFF))
                     )
-                    if (i < 2) Spacer(modifier = Modifier.width(Spacing.sm))
+                    if (i < permConfigs.lastIndex) Spacer(modifier = Modifier.width(Spacing.sm))
                 }
             }
 
@@ -168,10 +151,10 @@ fun PermissionSlide(
                 verticalArrangement = Arrangement.Center
             ) {
                 Text(
-                    text = config.tag,
+                    text = stringResource(R.string.perm_step_tag, index + 1, permConfigs.size),
                     style = MaterialTheme.typography.labelSmall,
                     letterSpacing = 2.5.sp,
-                    color = Color(0x4DFFFFFF)
+                    color = OffneticColors.textDisabled
                 )
 
                 Spacer(modifier = Modifier.height(Spacing.xxl))
@@ -223,30 +206,30 @@ fun PermissionSlide(
                 Spacer(modifier = Modifier.height(Spacing.xl))
 
                 Text(
-                    text = config.title,
+                    text = stringResource(config.titleRes),
                     style = MaterialTheme.typography.displayLarge,
-                    color = Color.White
+                    color = OffneticColors.textPrimary
                 )
 
                 Spacer(modifier = Modifier.height(Spacing.lg))
 
                 Text(
-                    text = config.desc,
+                    text = stringResource(config.descRes),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = Color(0x73FFFFFF)
+                    color = OffneticColors.textMuted
                 )
 
                 Spacer(modifier = Modifier.height(Spacing.xxl))
 
                 Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                    config.perms.forEach { p ->
+                    config.chipRes.forEach { chip ->
                         Box(
                             modifier = Modifier
                                 .border(1.dp, Color(0x1FFFFFFF), RoundedCornerShape(20.dp))
                                 .padding(horizontal = Spacing.md, vertical = Spacing.sm)
                         ) {
                             Text(
-                                text = p,
+                                text = stringResource(chip),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = Color(0x80FFFFFF),
                                 letterSpacing = 0.3.sp
@@ -272,12 +255,12 @@ fun PermissionSlide(
                         .height(56.dp),
                     shape = RoundedCornerShape(16.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = Color.White,
-                        contentColor = Color(0xFF0A0A0A)
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
                     )
                 ) {
                     Text(
-                        text = config.btnLabel,
+                        text = stringResource(config.btnLabelRes),
                         style = MaterialTheme.typography.labelLarge
                     )
                 }
@@ -285,9 +268,9 @@ fun PermissionSlide(
                 Spacer(modifier = Modifier.height(Spacing.md))
 
                 Text(
-                    text = "You can change this anytime in Settings",
+                    text = stringResource(R.string.perm_change_later),
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color(0x33FFFFFF),
+                    color = OffneticColors.textGhost,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth()
                 )

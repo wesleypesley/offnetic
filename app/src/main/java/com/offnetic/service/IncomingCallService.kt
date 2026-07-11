@@ -111,7 +111,7 @@ class IncomingCallService : Service() {
         }
 
         timeoutJob = serviceScope.launch {
-            delay(60_000L)
+            delay(com.offnetic.config.OffneticConfig.CALL_TIMEOUT_MS)
             Timber.d("Incoming call ringing timeout — stopping")
             if (webRtcManager.getCallState(peerPublicKey).value.phase == CallPhase.INCOMING) {
                 webRtcManager.onCallHangup(peerPublicKey)
