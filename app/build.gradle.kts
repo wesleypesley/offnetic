@@ -129,6 +129,8 @@ tasks.matching { it.name == "mergeReleaseNativeLibs" }.configureEach {
 dependencies {
     implementation(platform(libs.compose.bom))
     implementation(libs.material3)
+    // Icon set for chat UI (Bluetooth/Language/ContentCopy/...); R8 strips unused icons
+    implementation(libs.compose.material.icons.extended)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.core.ktx)

@@ -82,6 +82,10 @@ object OffneticColors {
     val borderSubtle = Color(0x0FFFFFFF)
     val borderFaint = Color(0x08FFFFFF)
 
+    // My message bubbles: subtle navy tint for instant sender recognition.
+    // Dark-theme only — needs a lighter variant if a light theme ships.
+    val bubbleMine = Color(0xFF1A2A3A)
+
     val accentGreen = Color(0xFF4ADE80)
     val accentBlue = Color(0xFF60A5FA)
     val accentLink = Color(0xFF3B82F6)

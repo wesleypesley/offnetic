@@ -37,16 +37,28 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Bluetooth
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Language
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -59,7 +71,11 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -70,9 +86,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -102,6 +120,10 @@ import com.offnetic.ui.theme.Spacing
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.withContext
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -118,6 +140,8 @@ fun ChatScreen(
     val reachability by viewModel.reachability.collectAsState()
     val isRecording by viewModel.isRecording.collectAsState()
     val myPublicKey by viewModel.myPublicKey.collectAsState()
+    val uiState by viewModel.uiState.collectAsState()
+    val scope = rememberCoroutineScope()
 
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -191,7 +215,25 @@ fun ChatScreen(
                 onCall = { onCall(viewModel.contactPublicKey) }
             )
 
-            if (messages.isEmpty()) {
+            if (uiState.error != null) {
+                Text(
+                    text = uiState.error ?: "",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = OffneticColors.danger,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(OffneticColors.dangerSurface)
+                        .padding(Spacing.sm)
+                )
+            }
+            if (uiState.isLoading) {
+                // Shimmer placeholder while the first Room emission is pending (feature #2)
+                LoadingPlaceholder(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                )
+            } else if (messages.isEmpty()) {
                 // Empty state instead of a blank void (D17)
                 Box(
                     modifier = Modifier
@@ -206,27 +248,74 @@ fun ChatScreen(
                     )
                 }
             } else {
-                LazyColumn(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .padding(horizontal = Spacing.lg),
-                    state = listState,
-                    verticalArrangement = Arrangement.spacedBy(Spacing.xs)
-                ) {
-                    itemsIndexed(messages, key = { _, m -> m.id }) { index, message ->
-                        // Day separator whenever the calendar day changes (D12)
-                        val prev = if (index > 0) messages[index - 1] else null
-                        if (prev == null || !isSameDay(prev.timestamp, message.timestamp)) {
-                            DateSeparator(timestamp = message.timestamp)
+                Box(modifier = Modifier.weight(1f)) {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = Spacing.lg),
+                        state = listState
+                    ) {
+                        itemsIndexed(messages, key = { _, m -> m.id }) { index, message ->
+                            // Day separator whenever the calendar day changes (D12)
+                            val prev = if (index > 0) messages[index - 1] else null
+                            val next = if (index < messages.lastIndex) messages[index + 1] else null
+                            val newDay = prev == null || !isSameDay(prev.timestamp, message.timestamp)
+                            if (newDay) {
+                                DateSeparator(timestamp = message.timestamp)
+                            }
+                            // Same sender within 5 min forms a visual group; breaks on
+                            // sender change, gap, or date boundary (feature #1)
+                            val groupedWithPrev = !newDay && prev != null &&
+                                prev.senderPublicKey == message.senderPublicKey &&
+                                message.timestamp - prev.timestamp < GROUP_WINDOW_MS
+                            val groupedWithNext = next != null &&
+                                next.senderPublicKey == message.senderPublicKey &&
+                                next.timestamp - message.timestamp < GROUP_WINDOW_MS &&
+                                isSameDay(message.timestamp, next.timestamp)
+                            MessageBubble(
+                                message = message,
+                                isMine = message.senderPublicKey == myPublicKey,
+                                isFirstInGroup = !groupedWithPrev,
+                                isLastInGroup = !groupedWithNext,
+                                onDelete = { viewModel.deleteMessage(message.id) },
+                                onCancel = { viewModel.cancelMessage(message.id) },
+                                onRetry = { viewModel.retryMessage(message.id) }
+                            )
                         }
-                        MessageBubble(
-                            message = message,
-                            isMine = message.senderPublicKey == myPublicKey,
-                            onDelete = { viewModel.deleteMessage(message.id) },
-                            onCancel = { viewModel.cancelMessage(message.id) },
-                            onRetry = { viewModel.retryMessage(message.id) }
-                        )
+                    }
+
+                    // Floating ↓ when the keyboard is open while scrolled up (feature #7)
+                    val density = LocalDensity.current
+                    val imeVisible = WindowInsets.ime.getBottom(density) > 0
+                    val isScrolledUp by remember {
+                        derivedStateOf {
+                            val info = listState.layoutInfo
+                            val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: 0
+                            info.totalItemsCount > 0 && lastVisible < info.totalItemsCount - 1
+                        }
+                    }
+                    if (imeVisible && isScrolledUp) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f),
+                            shadowElevation = 4.dp,
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(Spacing.md)
+                                .size(36.dp)
+                                .clickable {
+                                    scope.launch { listState.animateScrollToItem(messages.size - 1) }
+                                }
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Filled.KeyboardArrowDown,
+                                    contentDescription = stringResource(R.string.cd_scroll_to_bottom),
+                                    tint = OffneticColors.textPrimary,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -240,6 +329,11 @@ fun ChatScreen(
                     if (textInput.isNotBlank()) {
                         viewModel.sendTextMessage(textInput.trim())
                         textInput = ""
+                        // Sending always returns to the bottom, even if scrolled up;
+                        // the messages.size effect then follows the new row (feature #7)
+                        if (messages.isNotEmpty()) {
+                            scope.launch { listState.animateScrollToItem(messages.size - 1) }
+                        }
                     }
                 },
                 onAttachFile = { filePickerLauncher.launch("*/*") },
@@ -256,9 +350,11 @@ private fun ChatHeader(
     onBack: () -> Unit,
     onCall: () -> Unit
 ) {
+    // Solid surface — the old translucent scrim showed messages bleeding through
+    // while scrolling (design polish)
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = OffneticColors.surfaceScrim
+        color = MaterialTheme.colorScheme.surface
     ) {
         Row(
             modifier = Modifier
@@ -275,7 +371,12 @@ private fun ChatHeader(
                 )
             }
 
-            Column(modifier = Modifier.weight(1f).padding(horizontal = Spacing.sm)) {
+            // Icon-only status: Bluetooth = direct P2P, globe = internet relay,
+            // nothing = offline. Absence is the signal (design polish)
+            Row(
+                modifier = Modifier.weight(1f).padding(horizontal = Spacing.sm),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text(
                     text = contactName,
                     fontWeight = FontWeight.Bold,
@@ -283,28 +384,29 @@ private fun ChatHeader(
                     color = Color.White,
                     letterSpacing = (-0.3).sp,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
                 )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    val (targetColor, statusLabel) = when (reachability) {
-                        ChatReachability.LOCAL -> OffneticColors.accentGreen to stringResource(R.string.chat_status_nearby)
-                        ChatReachability.INTERNET_RELAY -> OffneticColors.accentBlue to stringResource(R.string.chat_status_internet)
-                        ChatReachability.OFFLINE -> OffneticColors.textHint to stringResource(R.string.chat_status_offline)
+                when (reachability) {
+                    ChatReachability.LOCAL -> {
+                        Spacer(modifier = Modifier.width(Spacing.sm))
+                        Icon(
+                            imageVector = Icons.Filled.Bluetooth,
+                            contentDescription = stringResource(R.string.chat_status_nearby),
+                            tint = OffneticColors.accentBlue,
+                            modifier = Modifier.size(12.dp)
+                        )
                     }
-                    val dotColor by animateColorAsState(targetColor, animationSpec = tween(300), label = "dot")
-                    Box(
-                        modifier = Modifier
-                            .size(6.dp)
-                            .background(dotColor, CircleShape)
-                    )
-                    Spacer(modifier = Modifier.width(Spacing.sm))
-                    AnimatedContent(targetState = statusLabel, label = "status") { label ->
-                    Text(
-                        text = label,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = dotColor
-                    )
+                    ChatReachability.INTERNET_RELAY -> {
+                        Spacer(modifier = Modifier.width(Spacing.sm))
+                        Icon(
+                            imageVector = Icons.Outlined.Language,
+                            contentDescription = stringResource(R.string.chat_status_internet),
+                            tint = OffneticColors.accentBlue,
+                            modifier = Modifier.size(12.dp)
+                        )
                     }
+                    ChatReachability.OFFLINE -> Unit
                 }
             }
 
@@ -330,9 +432,11 @@ private fun InputBar(
     onAttachFile: () -> Unit,
     onToggleRecord: () -> Unit
 ) {
+    // surfaceVariant separates the input zone from the message area, which sits
+    // on `background`/`surface` (design polish)
     Surface(
         modifier = Modifier.fillMaxWidth().navigationBarsPadding(),
-        color = MaterialTheme.colorScheme.surface
+        color = MaterialTheme.colorScheme.surfaceVariant
     ) {
         Row(
             modifier = Modifier
@@ -341,11 +445,11 @@ private fun InputBar(
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onAttachFile, enabled = richEnabled) {
-                Text(
-                    text = "+",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 20.sp,
-                    color = if (richEnabled) OffneticColors.textMuted else OffneticColors.textHint
+                Icon(
+                    imageVector = Icons.Filled.Add,
+                    contentDescription = stringResource(R.string.cd_attach),
+                    tint = if (richEnabled) OffneticColors.textMuted else OffneticColors.textHint,
+                    modifier = Modifier.size(22.dp)
                 )
             }
 
@@ -406,25 +510,31 @@ private fun InputBar(
 private fun MessageBubble(
     message: Message,
     isMine: Boolean,
+    isFirstInGroup: Boolean = true,
+    isLastInGroup: Boolean = true,
     onDelete: () -> Unit = {},
     onCancel: () -> Unit = {},
     onRetry: () -> Unit = {}
 ) {
-    val backgroundColor = if (isMine) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface
+    // Color asymmetry: mine gets the navy tint, theirs neutral gray — sender is
+    // recognisable before reading (design polish)
+    val backgroundColor = if (isMine) OffneticColors.bubbleMine else MaterialTheme.colorScheme.surfaceContainerHighest
     val alignment = if (isMine) Alignment.End else Alignment.Start
     var showMenu by remember { mutableStateOf(false) }
 
+    // Grouped messages flatten the corners on their grouped edge; only the last
+    // message of a group keeps the tail (feature #1)
     val shape = RoundedCornerShape(
-        topStart = 24.dp,
-        topEnd = 24.dp,
-        bottomStart = if (isMine) 24.dp else 4.dp,
-        bottomEnd = if (isMine) 4.dp else 24.dp
+        topStart = if (isMine) 24.dp else if (isFirstInGroup) 24.dp else 6.dp,
+        topEnd = if (!isMine) 24.dp else if (isFirstInGroup) 24.dp else 6.dp,
+        bottomStart = if (isMine) 24.dp else if (isLastInGroup) 4.dp else 6.dp,
+        bottomEnd = if (!isMine) 24.dp else if (isLastInGroup) 4.dp else 6.dp
     )
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = Spacing.xxs),
+            .padding(top = if (isFirstInGroup) Spacing.sm else 2.dp),
         horizontalAlignment = alignment
     ) {
         Box {
@@ -600,76 +710,153 @@ private fun MessageBubble(
                             )
                         }
                     }
-                }
-            }
 
-            DropdownMenu(
-                expanded = showMenu,
-                onDismissRequest = { showMenu = false }
-            ) {
-                if (message.type == Message.TYPE_TEXT) {
-                    val clipboard = LocalClipboardManager.current
-                    val context = LocalContext.current
-                    DropdownMenuItem(
-                        text = {
-                            Text(stringResource(R.string.action_copy), style = MaterialTheme.typography.labelLarge, color = Color.White)
-                        },
-                        onClick = {
-                            showMenu = false
-                            clipboard.setText(AnnotatedString(message.content))
-                            Toast.makeText(context, context.getString(R.string.chat_message_copied), Toast.LENGTH_SHORT).show()
+                    // Timestamp + delivery dot live inside the bubble, bottom-right,
+                    // and only on the last message of a group (design polish)
+                    if (isLastInGroup && message.type != Message.TYPE_CANCELLED && message.type != Message.TYPE_SYSTEM) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .align(Alignment.End)
+                                .padding(top = Spacing.xxs)
+                        ) {
+                            Text(
+                                text = formatTime(message.timestamp),
+                                fontSize = 10.sp,
+                                color = OffneticColors.textSubtle
+                            )
+                            if (isMine) {
+                                when (message.deliveryState) {
+                                    MessageDeliveryState.DELIVERED -> DeliveryDot(OffneticColors.textStrong)
+                                    MessageDeliveryState.READ -> DeliveryDot(OffneticColors.accentGreen)
+                                    MessageDeliveryState.FAILED -> {
+                                        Spacer(modifier = Modifier.width(Spacing.xs))
+                                        Icon(
+                                            imageVector = Icons.Filled.ErrorOutline,
+                                            contentDescription = stringResource(R.string.chat_action_retry_failed),
+                                            tint = OffneticColors.danger,
+                                            modifier = Modifier
+                                                .size(12.dp)
+                                                .clickable { onRetry() }
+                                        )
+                                    }
+                                    // SAVED / SENT_LOCAL / SENT_RELAY: nothing — sent is the default
+                                    else -> Unit
+                                }
+                            }
                         }
-                    )
-                }
-                DropdownMenuItem(
-                    text = {
-                        Text(stringResource(R.string.chat_delete_for_me), style = MaterialTheme.typography.labelLarge, color = OffneticColors.danger)
-                    },
-                    onClick = {
-                        showMenu = false
-                        onDelete()
                     }
-                )
-                if (isMine && message.deliveryState == MessageDeliveryState.SAVED && message.type != Message.TYPE_CANCELLED) {
-                    DropdownMenuItem(
-                        text = {
-                            Text(stringResource(R.string.chat_cancel_sending), style = MaterialTheme.typography.labelLarge, color = OffneticColors.danger)
-                        },
-                        onClick = {
-                            showMenu = false
-                            onCancel()
-                        }
+                }
+            }
+
+            if (showMenu) {
+                val haptics = LocalHapticFeedback.current
+                val keyboard = LocalSoftwareKeyboardController.current
+                val clipboard = LocalClipboardManager.current
+                val context = LocalContext.current
+                LaunchedEffect(Unit) {
+                    // Bar must not render behind the IME; haptic confirms the long-press
+                    keyboard?.hide()
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                }
+                Popup(
+                    alignment = if (isMine) Alignment.TopEnd else Alignment.TopStart,
+                    offset = IntOffset(0, with(LocalDensity.current) { (-60).dp.roundToPx() }),
+                    onDismissRequest = { showMenu = false },
+                    properties = PopupProperties(focusable = true)
+                ) {
+                    MessageActionBar(
+                        onCopy = if (message.type == Message.TYPE_TEXT) {
+                            {
+                                clipboard.setText(AnnotatedString(message.content))
+                                Toast.makeText(context, context.getString(R.string.chat_message_copied), Toast.LENGTH_SHORT).show()
+                            }
+                        } else null,
+                        onRetry = if (message.type == Message.TYPE_CANCELLED || message.deliveryState == MessageDeliveryState.FAILED) onRetry else null,
+                        onCancel = if (isMine && message.deliveryState == MessageDeliveryState.SAVED && message.type != Message.TYPE_CANCELLED) onCancel else null,
+                        onDelete = onDelete,
+                        onDismiss = { showMenu = false }
                     )
                 }
             }
         }
+    }
+}
 
+@Composable
+private fun DeliveryDot(color: Color) {
+    Spacer(modifier = Modifier.width(Spacing.xs))
+    Box(
+        modifier = Modifier
+            .size(7.dp)
+            .background(color, CircleShape)
+    )
+}
+
+// iMessage-style horizontal pill with icon+label actions (feature #0)
+@Composable
+private fun MessageActionBar(
+    onCopy: (() -> Unit)?,
+    onRetry: (() -> Unit)?,
+    onCancel: (() -> Unit)?,
+    onDelete: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val haptics = LocalHapticFeedback.current
+    Surface(
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.95f),
+        tonalElevation = 8.dp,
+        shadowElevation = 4.dp
+    ) {
         Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = Spacing.xs, vertical = Spacing.xxs)
+            modifier = Modifier.padding(horizontal = Spacing.md, vertical = Spacing.xs),
+            horizontalArrangement = Arrangement.spacedBy(Spacing.md)
         ) {
-            Text(
-                text = formatTime(message.timestamp),
-                style = MaterialTheme.typography.bodySmall,
-                color = OffneticColors.textHint
-            )
-            if (isMine && message.type != Message.TYPE_CANCELLED && message.type != Message.TYPE_SYSTEM) {
-                Spacer(modifier = Modifier.width(Spacing.xs))
-                val (statusColor, statusLabel) = when (message.deliveryState) {
-                    MessageDeliveryState.SAVED -> OffneticColors.textHint to stringResource(R.string.chat_delivery_saved)
-                    MessageDeliveryState.SENT_LOCAL -> OffneticColors.textSubtle to stringResource(R.string.chat_delivery_sending)
-                    MessageDeliveryState.SENT_RELAY -> OffneticColors.textSubtle to stringResource(R.string.chat_delivery_relayed)
-                    MessageDeliveryState.DELIVERED -> OffneticColors.textStrong to stringResource(R.string.chat_delivery_delivered)
-                    MessageDeliveryState.READ -> OffneticColors.accentGreen to stringResource(R.string.chat_delivery_seen)
-                    MessageDeliveryState.FAILED -> OffneticColors.danger to stringResource(R.string.chat_delivery_failed)
+            if (onCopy != null) {
+                ActionBarItem(Icons.Outlined.ContentCopy, stringResource(R.string.action_copy), OffneticColors.textPrimary) {
+                    onCopy()
+                    onDismiss()
                 }
-                Text(
-                    text = statusLabel,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = statusColor
-                )
+            }
+            if (onRetry != null) {
+                ActionBarItem(Icons.Filled.Refresh, stringResource(R.string.action_retry), OffneticColors.accentGreen) {
+                    onRetry()
+                    onDismiss()
+                }
+            }
+            if (onCancel != null) {
+                ActionBarItem(Icons.Filled.Close, stringResource(R.string.action_cancel), OffneticColors.danger) {
+                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    onCancel()
+                    onDismiss()
+                }
+            }
+            ActionBarItem(Icons.Outlined.Delete, stringResource(R.string.action_delete), OffneticColors.danger) {
+                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                onDelete()
+                onDismiss()
             }
         }
+    }
+}
+
+@Composable
+private fun ActionBarItem(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    tint: Color,
+    onClick: () -> Unit
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .clip(RoundedCornerShape(12.dp))
+            .clickable { onClick() }
+            .padding(horizontal = Spacing.xs, vertical = Spacing.xs)
+    ) {
+        Icon(imageVector = icon, contentDescription = label, tint = tint, modifier = Modifier.size(20.dp))
+        Text(text = label, fontSize = 10.sp, color = tint)
     }
 }
 
@@ -949,6 +1136,10 @@ private val noisePoints: List<Pair<Float, Float>> = run {
     (0 until 300).map { rng.nextFloat() to rng.nextFloat() }
 }
 
+// Feature #8 considered rasterizing this to a Bitmap, but a full-screen ARGB buffer
+// costs ~10MB for a barely-visible texture. Compose already caches the draw ops in
+// the node's display list — the 300 circles are only re-recorded when this layer is
+// invalidated, not per frame — so the vector draw is the cheaper option.
 @Composable
 private fun NoiseOverlay() {
     Canvas(modifier = Modifier.fillMaxSize()) {
@@ -966,6 +1157,38 @@ private fun NoiseOverlay() {
 private val timeFormatter = SimpleDateFormat("HH:mm", Locale.getDefault())
 
 private fun formatTime(timestamp: Long): String = timeFormatter.format(Date(timestamp))
+
+// Messages from the same sender within this window merge into one group (feature #1)
+private const val GROUP_WINDOW_MS = 5L * 60 * 1000
+
+@Composable
+private fun LoadingPlaceholder(modifier: Modifier = Modifier) {
+    val transition = rememberInfiniteTransition(label = "shimmer")
+    val alpha by transition.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 0.75f,
+        animationSpec = infiniteRepeatable(tween(700), RepeatMode.Reverse),
+        label = "shimmerAlpha"
+    )
+    Column(
+        modifier = modifier.padding(Spacing.lg),
+        verticalArrangement = Arrangement.spacedBy(Spacing.sm)
+    ) {
+        repeat(4) { i ->
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = if (i % 2 == 0) Alignment.CenterStart else Alignment.CenterEnd
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(width = (200 - i * 24).dp, height = 40.dp)
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(OffneticColors.surfaceBubble.copy(alpha = alpha))
+                )
+            }
+        }
+    }
+}
 
 private val URL_REGEX = Regex("""https?://\S+""")
 

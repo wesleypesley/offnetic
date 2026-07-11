@@ -10,6 +10,7 @@
     <string name="action_back">← Back</string>
     <string name="action_copy">Copy</string>
     <string name="action_delete">Delete</string>
+    <string name="action_cancel">Cancel</string>
     <string name="loading">Loading…</string>
 
     <!-- Permissions -->
@@ -111,6 +112,9 @@
     <string name="cd_photo">Photo</string>
     <string name="cd_video">Video</string>
     <string name="cd_back">Back</string>
+    <string name="cd_attach">Attach file</string>
+    <string name="cd_scroll_to_bottom">Scroll to bottom</string>
+    <string name="chat_action_retry_failed">Message failed — tap to retry</string>
 
     <!-- Call -->
     <string name="call_calling">Calling…</string>

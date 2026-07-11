@@ -39,9 +39,11 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -83,6 +85,11 @@ class ChatViewModel @Inject constructor(
 ) : ViewModel() {
 
     val contactPublicKey: String = Routes.decodeKey(savedStateHandle.get<String>("contactPublicKey") ?: "")
+
+    // Loading until the first Room emission (which may legitimately be empty for a
+    // new chat); errors from that initial load surface here (feature #2)
+    private val _uiState = MutableStateFlow(ChatUiState(contactPublicKey = contactPublicKey, isLoading = true))
+    val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
 
     private val _contactName = MutableStateFlow(contactPublicKey.take(12) + "...")
     val contactName: StateFlow<String> = _contactName.asStateFlow()
@@ -145,6 +152,16 @@ class ChatViewModel @Inject constructor(
     }
 
     init {
+        viewModelScope.launch {
+            try {
+                messageDao.getRecentMessagesForChat(contactPublicKey, 1).first()
+                _uiState.update { it.copy(isLoading = false) }
+            } catch (e: Exception) {
+                Timber.e(e, "Initial message load failed")
+                _uiState.update { it.copy(isLoading = false, error = "Couldn't load messages") }
+            }
+        }
+
         viewModelScope.launch {
             contactDao.getByPublicKey(contactPublicKey)?.let { contact ->
                 _contactName.value = contact.displayName
