@@ -108,6 +108,9 @@ class NcapManagerImpl @Inject constructor(
     private val _incomingCallEvents = MutableSharedFlow<String>(replay = 0, extraBufferCapacity = 4)
     override val incomingCallEvents: SharedFlow<String> = _incomingCallEvents.asSharedFlow()
 
+    private val _typingSignals = MutableSharedFlow<String>(extraBufferCapacity = 8)
+    override val typingSignals: SharedFlow<String> = _typingSignals.asSharedFlow()
+
     private val endpointPeers = ConcurrentHashMap<String, PeerInfo>()
     @Volatile private var isAdvertising = false
     private val _isDiscovering = MutableStateFlow(false)
@@ -813,6 +816,12 @@ class NcapManagerImpl @Inject constructor(
                         if (envelope.messageUuid.isNotEmpty()) messageDao.markRead(envelope.messageUuid)
                         Timber.d("Nearby read receipt uuid=${envelope.messageUuid.take(8)} -> READ")
                     }
+                    NcapEnvelope.PayloadType.TYPING -> {
+                        // Never signal for our own reflected envelopes (feature #6, check 3)
+                        if (senderPublicKey.isNotEmpty() && senderPublicKey != identityDao.getIdentity()?.publicKey) {
+                            _typingSignals.emit(senderPublicKey)
+                        }
+                    }
                     NcapEnvelope.PayloadType.HEARTBEAT -> {
                         Timber.d("Heartbeat from ${senderPublicKey.take(8)}...")
                     }
@@ -1078,6 +1087,7 @@ class NcapManagerImpl @Inject constructor(
             }
             else -> {
                 val content = decryptedJson.getString("content")
+                val quote = decryptedJson.optJSONObject("quote")
                 com.offnetic.data.local.db.entity.Message(
                     sessionId = senderPublicKey,
                     chatId = chatId,
@@ -1086,7 +1096,9 @@ class NcapManagerImpl @Inject constructor(
                     type = com.offnetic.data.local.db.entity.Message.TYPE_TEXT,
                     timestamp = timestamp,
                     deliveryState = com.offnetic.domain.model.MessageDeliveryState.SAVED,
-                    isRead = false
+                    isRead = false,
+                    quotedSender = quote?.optString("sender")?.takeIf { it.isNotEmpty() }?.take(50),
+                    quotedPreview = quote?.optString("preview")?.takeIf { it.isNotEmpty() }?.take(120)
                 )
             }
         }.copy(messageUuid = resolvedUuid)

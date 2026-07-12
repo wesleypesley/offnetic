@@ -48,6 +48,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.Close
@@ -141,6 +142,7 @@ fun ChatScreen(
     val isRecording by viewModel.isRecording.collectAsState()
     val myPublicKey by viewModel.myPublicKey.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
+    val isPeerTyping by viewModel.isPeerTyping.collectAsState()
     val scope = rememberCoroutineScope()
 
     val context = LocalContext.current
@@ -175,13 +177,14 @@ fun ChatScreen(
         uri?.let { viewModel.sendFile(it) }
     }
 
-    LaunchedEffect(messages.size) {
+    LaunchedEffect(messages.size, isPeerTyping) {
         if (messages.isNotEmpty()) {
             val info = listState.layoutInfo
             val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: -1
             val total = info.totalItemsCount
             if (total == 0 || lastVisible >= total - 2) {
-                listState.animateScrollToItem(messages.size - 1)
+                // The typing bubble is one extra item past the last message
+                listState.animateScrollToItem(messages.size - 1 + if (isPeerTyping) 1 else 0)
             }
         }
     }
@@ -279,8 +282,15 @@ fun ChatScreen(
                                 isLastInGroup = !groupedWithNext,
                                 onDelete = { viewModel.deleteMessage(message.id) },
                                 onCancel = { viewModel.cancelMessage(message.id) },
-                                onRetry = { viewModel.retryMessage(message.id) }
+                                onRetry = { viewModel.retryMessage(message.id) },
+                                onReply = { viewModel.startReply(message) }
                             )
+                        }
+                        // Animated-dots bubble styled like their messages (feature #6)
+                        if (isPeerTyping) {
+                            item(key = "typing-indicator") {
+                                TypingBubble()
+                            }
                         }
                     }
 
@@ -320,11 +330,28 @@ fun ChatScreen(
                 }
             }
 
+            val replyingTo by viewModel.replyingTo.collectAsState()
+            replyingTo?.let { reply ->
+                ReplyPreviewBar(
+                    reply = reply,
+                    isMine = reply.senderPublicKey == myPublicKey,
+                    contactName = contactName,
+                    onDismiss = { viewModel.clearReply() }
+                )
+            }
+
             InputBar(
                 textInput = textInput,
                 isRecording = isRecording,
                 richEnabled = reachability != ChatReachability.OFFLINE,
-                onTextChange = { if (it.length <= 5000) textInput = it },
+                onTextChange = {
+                    if (it.length <= 5000) {
+                        // Signal typing only when text grows — paste of full message or
+                        // deletion shouldn't ping the peer (feature #6)
+                        if (it.length > textInput.length && it.isNotBlank()) viewModel.onTyping()
+                        textInput = it
+                    }
+                },
                 onSend = {
                     if (textInput.isNotBlank()) {
                         viewModel.sendTextMessage(textInput.trim())
@@ -514,7 +541,8 @@ private fun MessageBubble(
     isLastInGroup: Boolean = true,
     onDelete: () -> Unit = {},
     onCancel: () -> Unit = {},
-    onRetry: () -> Unit = {}
+    onRetry: () -> Unit = {},
+    onReply: () -> Unit = {}
 ) {
     // Color asymmetry: mine gets the navy tint, theirs neutral gray — sender is
     // recognisable before reading (design polish)
@@ -553,6 +581,14 @@ private fun MessageBubble(
                     )
             ) {
                 Column(modifier = Modifier.padding(horizontal = Spacing.md, vertical = Spacing.sm)) {
+                    // Embedded reply quote — self-contained, no DB lookup (feature #4)
+                    if (message.quotedPreview != null) {
+                        QuotedBlock(
+                            sender = message.quotedSender ?: "",
+                            preview = message.quotedPreview ?: ""
+                        )
+                        Spacer(modifier = Modifier.height(Spacing.xs))
+                    }
                     when (message.type) {
                         Message.TYPE_CANCELLED -> {
                             Text(
@@ -772,6 +808,7 @@ private fun MessageBubble(
                                 Toast.makeText(context, context.getString(R.string.chat_message_copied), Toast.LENGTH_SHORT).show()
                             }
                         } else null,
+                        onReply = if (message.type != Message.TYPE_SYSTEM) onReply else null,
                         onRetry = if (message.type == Message.TYPE_CANCELLED || message.deliveryState == MessageDeliveryState.FAILED) onRetry else null,
                         onCancel = if (isMine && message.deliveryState == MessageDeliveryState.SAVED && message.type != Message.TYPE_CANCELLED) onCancel else null,
                         onDelete = onDelete,
@@ -797,6 +834,7 @@ private fun DeliveryDot(color: Color) {
 @Composable
 private fun MessageActionBar(
     onCopy: (() -> Unit)?,
+    onReply: (() -> Unit)? = null,
     onRetry: (() -> Unit)?,
     onCancel: (() -> Unit)?,
     onDelete: () -> Unit,
@@ -816,6 +854,12 @@ private fun MessageActionBar(
             if (onCopy != null) {
                 ActionBarItem(Icons.Outlined.ContentCopy, stringResource(R.string.action_copy), OffneticColors.textPrimary) {
                     onCopy()
+                    onDismiss()
+                }
+            }
+            if (onReply != null) {
+                ActionBarItem(Icons.AutoMirrored.Filled.Reply, stringResource(R.string.chat_reply), OffneticColors.textPrimary) {
+                    onReply()
                     onDismiss()
                 }
             }
@@ -1160,6 +1204,154 @@ private fun formatTime(timestamp: Long): String = timeFormatter.format(Date(time
 
 // Messages from the same sender within this window merge into one group (feature #1)
 private const val GROUP_WINDOW_MS = 5L * 60 * 1000
+
+// Their-style bubble containing three pulsing dots (feature #6). Styling matches
+// MessageBubble's "theirs" appearance so an arriving real message causes no jump.
+@Composable
+private fun TypingBubble() {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = Spacing.sm),
+        horizontalAlignment = Alignment.Start
+    ) {
+        Surface(
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp, bottomStart = 4.dp, bottomEnd = 24.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHighest,
+            modifier = Modifier.border(
+                0.5.dp,
+                OffneticColors.surfaceBubble,
+                RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp, bottomStart = 4.dp, bottomEnd = 24.dp)
+            )
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = Spacing.md, vertical = Spacing.md),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                repeat(3) { index ->
+                    TypingDot(index)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TypingDot(index: Int) {
+    val transition = rememberInfiniteTransition(label = "typingDot$index")
+    val alpha by transition.animateFloat(
+        initialValue = 0.25f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(400, delayMillis = index * 200),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "typingDotAlpha$index"
+    )
+    Box(
+        modifier = Modifier
+            .size(6.dp)
+            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = alpha), CircleShape)
+    )
+}
+
+// Quoted message rendered above the reply content inside the bubble (feature #4)
+@Composable
+private fun QuotedBlock(sender: String, preview: String) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(OffneticColors.surfaceCard)
+    ) {
+        Box(
+            modifier = Modifier
+                .width(3.dp)
+                .heightIn(min = 36.dp)
+                .background(OffneticColors.accentBlue)
+        )
+        Column(modifier = Modifier.padding(horizontal = Spacing.sm, vertical = Spacing.xs)) {
+            if (sender.isNotEmpty()) {
+                Text(
+                    text = sender,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = OffneticColors.accentBlue,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Text(
+                text = preview,
+                style = MaterialTheme.typography.bodySmall,
+                color = OffneticColors.textMuted,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+// Quote preview pinned above the input bar while composing a reply (feature #4)
+@Composable
+private fun ReplyPreviewBar(
+    reply: Message,
+    isMine: Boolean,
+    contactName: String,
+    onDismiss: () -> Unit
+) {
+    val senderLabel = if (isMine) stringResource(R.string.chat_reply_you) else contactName
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surfaceVariant
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = Spacing.md, top = Spacing.sm, bottom = 0.dp, end = Spacing.xs),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .width(3.dp)
+                    .height(36.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(OffneticColors.accentBlue)
+            )
+            Spacer(modifier = Modifier.width(Spacing.sm))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.chat_replying_to, senderLabel),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = OffneticColors.accentBlue,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = when (reply.type) {
+                        Message.TYPE_VOICE_NOTE -> "🎤 ${reply.content}"
+                        Message.TYPE_FILE, Message.TYPE_IMAGE, Message.TYPE_VIDEO ->
+                            "📎 ${reply.content.removePrefix("File: ")}"
+                        else -> reply.content
+                    }.take(100),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = OffneticColors.textMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            // Explicit dismiss button — tap-to-dismiss is too easy to hit while typing
+            IconButton(onClick = onDismiss) {
+                Icon(
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = stringResource(R.string.action_cancel),
+                    tint = OffneticColors.textMuted,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
+    }
+}
 
 @Composable
 private fun LoadingPlaceholder(modifier: Modifier = Modifier) {

@@ -55,6 +55,8 @@ private const val RELAY_OUTBOX_TTL_MS = 7L * 24 * 60 * 60 * 1000
 private const val RELAY_OUTBOX_CAP = com.offnetic.config.OffneticConfig.RELAY_OUTBOX_CAP
 private const val CONNECTION_REQUEST_TTL_MS = 72L * 60 * 60 * 1000
 private const val MESSAGE_PAGE_SIZE = 100
+private const val TYPING_THROTTLE_MS = 2_000L
+private const val TYPING_DISMISS_MS = 5_000L
 
 data class ChatUiState(
     val messages: List<com.offnetic.domain.model.Message> = emptyList(),
@@ -81,6 +83,7 @@ class ChatViewModel @Inject constructor(
     private val activeChatTracker: ActiveChatTracker,
     private val messageNotificationManager: MessageNotificationManager,
     private val blossomFileService: BlossomFileService,
+    private val relayInboxHandler: com.offnetic.data.relay.RelayInboxHandler,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -125,6 +128,67 @@ class ChatViewModel @Inject constructor(
 
     private val recordingGuard = AtomicBoolean(false)
     private val retryInProgress = AtomicBoolean(false)
+
+    // Message being replied to; cleared on send or explicit dismiss (feature #4)
+    private val _replyingTo = MutableStateFlow<com.offnetic.domain.model.Message?>(null)
+    val replyingTo: StateFlow<com.offnetic.domain.model.Message?> = _replyingTo.asStateFlow()
+
+    // Peer typing state: any TYPING signal (NCAPI or relay) from this chat's peer
+    // shows the bubble; 5s of silence or an arriving message dismisses it (feature #6)
+    private val _isPeerTyping = MutableStateFlow(false)
+    val isPeerTyping: StateFlow<Boolean> = _isPeerTyping.asStateFlow()
+    private var typingDismissJob: kotlinx.coroutines.Job? = null
+
+    @Volatile private var lastTypingSentAt = 0L
+
+    /** Called on every keystroke; sends TYPING at most every 2s (feature #6). */
+    fun onTyping() {
+        val now = System.currentTimeMillis()
+        if (now - lastTypingSentAt < TYPING_THROTTLE_MS) return
+        lastTypingSentAt = now
+        viewModelScope.launch {
+            try {
+                val endpoints = ncapManager.getConnectedEndpointIds(contactPublicKey)
+                if (endpoints.isNotEmpty()) {
+                    ncapManager.sendCallSignal(endpoints.first(), NcapEnvelope.PayloadType.TYPING, ByteArray(0))
+                } else if (currentReachability() == ChatReachability.INTERNET_RELAY) {
+                    contactDao.getByPublicKey(contactPublicKey)?.nostrPublicKey?.let { npub ->
+                        relayControlSender.sendCallSignal(npub, com.offnetic.data.relay.RelayControl.TYPE_TYPING, "")
+                    }
+                }
+            } catch (e: Exception) {
+                Timber.w(e, "typing signal send failed")
+            }
+        }
+    }
+
+    private fun onPeerTypingSignal(senderPk: String) {
+        if (senderPk != contactPublicKey) return
+        _isPeerTyping.value = true
+        typingDismissJob?.cancel()
+        typingDismissJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(TYPING_DISMISS_MS)
+            _isPeerTyping.value = false
+        }
+    }
+
+    @Volatile private var myDisplayName: String = ""
+
+    fun startReply(message: com.offnetic.domain.model.Message) {
+        _replyingTo.value = message
+    }
+
+    fun clearReply() {
+        _replyingTo.value = null
+    }
+
+    private fun quotePreviewFor(msg: com.offnetic.domain.model.Message): String = when (msg.type) {
+        com.offnetic.domain.model.Message.TYPE_VOICE_NOTE -> "🎤 ${msg.content}"
+        com.offnetic.domain.model.Message.TYPE_FILE,
+        com.offnetic.domain.model.Message.TYPE_IMAGE,
+        com.offnetic.domain.model.Message.TYPE_VIDEO -> "📎 ${msg.content.removePrefix("File: ")}"
+        else -> msg.content
+    }.take(100)
 
     fun setActive() {
         activeChatTracker.activeChatKey = contactPublicKey
@@ -174,6 +238,7 @@ class ChatViewModel @Inject constructor(
             val myIdentity = identityDao.getIdentity()
             val myPk = myIdentity?.publicKey ?: return@launch
             _myPublicKey.value = myPk
+            myDisplayName = profileDao.getByPublicKey(myPk)?.displayName ?: ""
             ncapManager.incomingMessages.collect { msg ->
                 if (msg.chatId == contactPublicKey && activeChatTracker.activeChatKey == contactPublicKey) {
                     messageDao.markAsRead(contactPublicKey, myPk)
@@ -183,6 +248,24 @@ class ChatViewModel @Inject constructor(
                             relayControlSender.sendReadReceipt(it, msg.messageUuid)
                         }
                     }
+                }
+            }
+        }
+
+        viewModelScope.launch {
+            kotlinx.coroutines.flow.merge(
+                ncapManager.typingSignals,
+                relayInboxHandler.typingSignals
+            ).collect { senderPk -> onPeerTypingSignal(senderPk) }
+        }
+
+        viewModelScope.launch {
+            // A real message from the peer replaces the typing bubble immediately —
+            // identical styling means zero visual jump (feature #6)
+            messages.collect { list ->
+                if (list.lastOrNull()?.senderPublicKey == contactPublicKey && _isPeerTyping.value) {
+                    typingDismissJob?.cancel()
+                    _isPeerTyping.value = false
                 }
             }
         }
@@ -205,12 +288,30 @@ class ChatViewModel @Inject constructor(
 
     fun sendTextMessage(text: String) {
         if (text.isBlank() || text.length > 5000) return
+        val reply = _replyingTo.value
+        _replyingTo.value = null
+        // Quote is embedded self-contained so the receiver renders it without a DB
+        // lookup, and it survives deletion of the source message (feature #4)
+        val quotedSender = reply?.let { r ->
+            if (r.senderPublicKey == _myPublicKey.value) {
+                myDisplayName.ifEmpty { context.getString(com.offnetic.R.string.chat_reply_you) }
+            } else {
+                _contactName.value
+            }
+        }
+        val quotedPreview = reply?.let { quotePreviewFor(it) }
         val json = JSONObject().apply {
             put("content", text)
             put("timestamp", System.currentTimeMillis())
+            if (quotedSender != null && quotedPreview != null) {
+                put("quote", JSONObject().apply {
+                    put("sender", quotedSender)
+                    put("preview", quotedPreview)
+                })
+            }
         }
         val plaintext = json.toString().toByteArray(Charsets.UTF_8)
-        sendEncrypted(plaintext, com.offnetic.data.local.db.entity.Message.TYPE_TEXT, text)
+        sendEncrypted(plaintext, com.offnetic.data.local.db.entity.Message.TYPE_TEXT, text, quotedSender, quotedPreview)
     }
 
     fun sendFile(uri: Uri) {
@@ -401,7 +502,13 @@ class ChatViewModel @Inject constructor(
             relayEligible = contactDao.getByPublicKey(contactPublicKey)?.nostrPublicKey != null
         )
 
-    private fun sendEncrypted(plaintext: ByteArray, type: Int, content: String) {
+    private fun sendEncrypted(
+        plaintext: ByteArray,
+        type: Int,
+        content: String,
+        quotedSender: String? = null,
+        quotedPreview: String? = null
+    ) {
         Timber.d("sendEncrypted: type=$type, size=${plaintext.size}, peer=${contactPublicKey.take(8)}...")
         viewModelScope.launch {
             try {
@@ -419,7 +526,9 @@ class ChatViewModel @Inject constructor(
                     type = type,
                     timestamp = System.currentTimeMillis(),
                     deliveryState = MessageDeliveryState.SAVED,
-                    isRead = false
+                    isRead = false,
+                    quotedSender = quotedSender,
+                    quotedPreview = quotedPreview
                 )
                 val messageId = messageDao.insert(entity)
                 Timber.d("sendEncrypted: inserted id=$messageId uuid=${entity.messageUuid.take(8)} (SAVED)")

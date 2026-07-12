@@ -31,6 +31,8 @@ interface NcapManager {
     val incomingMessages: SharedFlow<Message>
     val incomingCallSignals: SharedFlow<CallSignal>
     val incomingCallEvents: SharedFlow<String>
+    /** Sender public keys of peers currently typing (chat feature #6). */
+    val typingSignals: SharedFlow<String>
     val locationRequired: SharedFlow<Unit>
 
     fun startAdvertising(name: String)

@@ -87,6 +87,9 @@
     <!-- Chat -->
     <string name="chat_empty">No messages yet — say hello</string>
     <string name="chat_message_copied">Message copied</string>
+    <string name="chat_reply">Reply</string>
+    <string name="chat_reply_you">You</string>
+    <string name="chat_replying_to">Replying to %1$s</string>
     <string name="chat_today">Today</string>
     <string name="chat_yesterday">Yesterday</string>
     <string name="chat_input_placeholder">Message</string>

@@ -28,7 +28,13 @@ data class Message(
     val isRead: Boolean = false,
     val attachmentPath: String? = null,
     val attachmentType: Int = 0,
-    val replyToId: Long? = null
+    val replyToId: Long? = null,
+    // Self-contained quote (feature #4): sender label + preview travel with the
+    // message so rendering never needs a DB lookup and survives source deletion
+    val quotedSender: String? = null,
+    val quotedPreview: String? = null,
+    // Voice note amplitude samples for waveform rendering (feature #5)
+    val waveformData: ByteArray? = null
 ) {
     companion object {
         const val TYPE_TEXT = 0

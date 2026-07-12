@@ -54,7 +54,7 @@ import com.offnetic.data.local.db.entity.SignalSignedPreKeyEntity
         RelayStateEntity::class,
         NostrIdentityEntity::class
     ],
-    version = 11,
+    version = 12,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -91,6 +91,15 @@ abstract class OffneticDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 // Covers the MAX(id) GROUP BY chatId subquery in getChatSummaries (DB22)
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_messages_chatId_id ON messages(chatId, id)")
+            }
+        }
+
+        val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Reply quotes (chat feature #4) + voice waveforms (chat feature #5)
+                db.execSQL("ALTER TABLE messages ADD COLUMN quotedSender TEXT")
+                db.execSQL("ALTER TABLE messages ADD COLUMN quotedPreview TEXT")
+                db.execSQL("ALTER TABLE messages ADD COLUMN waveformData BLOB")
             }
         }
     }

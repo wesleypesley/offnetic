@@ -55,6 +55,11 @@ class RelayInboxHandler @Inject constructor(
     private val inFlightMessages = ConcurrentHashMap.newKeySet<String>()
     private val fileScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    // Offnetic public keys of peers currently typing, relayed over Nostr (feature #6).
+    // Note: the app has no contact-blocking feature; unknown senders are dropped below.
+    private val _typingSignals = kotlinx.coroutines.flow.MutableSharedFlow<String>(extraBufferCapacity = 8)
+    val typingSignals: kotlinx.coroutines.flow.SharedFlow<String> = _typingSignals
+
     suspend fun handleGiftWrap(event: NostrEvent) {
         val myPriv = nostrIdentityManager.getKeyPair()?.privateKey ?: return
         val result = runCatching { GiftWrap.unwrap(myPriv, event) }.getOrNull() ?: run {
@@ -86,6 +91,12 @@ class RelayInboxHandler @Inject constructor(
                 }
             }
             RelayControl.TYPE_FILE_BLOSSOM -> handleFileBlossom(senderNpub, uuid, rumor)
+            RelayControl.TYPE_TYPING -> {
+                // Only known contacts may surface typing activity (feature #6)
+                contactDao.getByNostrPublicKey(senderNpub)?.let { c ->
+                    _typingSignals.emit(c.publicKey)
+                }
+            }
             else -> handleMessage(senderNpub, rumor)
         }
     }
@@ -135,6 +146,8 @@ class RelayInboxHandler @Inject constructor(
         val content = json.optString("content", "")
         if (content.isEmpty()) return
         val timestamp = json.optLong("timestamp", System.currentTimeMillis())
+        // Optional self-contained reply quote — absent on messages from older clients (feature #4)
+        val quote = json.optJSONObject("quote")
 
         messageDao.insert(
             Message(
@@ -146,7 +159,9 @@ class RelayInboxHandler @Inject constructor(
                 type = Message.TYPE_TEXT,
                 timestamp = timestamp,
                 deliveryState = MessageDeliveryState.SAVED,
-                isRead = false
+                isRead = false,
+                quotedSender = quote?.optString("sender")?.takeIf { it.isNotEmpty() }?.take(50),
+                quotedPreview = quote?.optString("preview")?.takeIf { it.isNotEmpty() }?.take(120)
             )
         )
         messageNotificationManager.notifyIfNeeded(contact.publicKey)

@@ -22,7 +22,8 @@ sealed class NcapEnvelope {
         CALL_HANGUP,
         INITIAL_IDENTITY,
         DELIVERY_ACK,
-        READ_RECEIPT
+        READ_RECEIPT,
+        TYPING
     }
 
     data class Plain(

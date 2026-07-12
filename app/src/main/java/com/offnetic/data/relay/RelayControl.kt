@@ -15,6 +15,7 @@ object RelayControl {
     const val TYPE_ICE_CANDIDATE = "ice_candidate"
     const val TYPE_CALL_HANGUP = "call_hangup"
     const val TYPE_FILE_BLOSSOM = "file_blossom"
+    const val TYPE_TYPING = "typing"
 
     fun typeOf(rumor: Rumor): String =
         rumor.tags.firstOrNull { it.size >= 2 && it[0] == TAG_TYPE }?.get(1) ?: TYPE_MESSAGE

@@ -13,7 +13,10 @@ data class Message(
     val isRead: Boolean = false,
     val attachmentPath: String? = null,
     val attachmentType: Int = 0,
-    val replyToId: Long? = null
+    val replyToId: Long? = null,
+    val quotedSender: String? = null,
+    val quotedPreview: String? = null,
+    val waveformData: ByteArray? = null
 ) {
     companion object {
         const val TYPE_TEXT = 0
@@ -38,7 +41,10 @@ data class Message(
                 isRead = entity.isRead,
                 attachmentPath = entity.attachmentPath,
                 attachmentType = entity.attachmentType,
-                replyToId = entity.replyToId
+                replyToId = entity.replyToId,
+                quotedSender = entity.quotedSender,
+                quotedPreview = entity.quotedPreview,
+                waveformData = entity.waveformData
             )
         }
     }
@@ -57,7 +63,10 @@ data class Message(
             isRead = isRead,
             attachmentPath = attachmentPath,
             attachmentType = attachmentType,
-            replyToId = replyToId
+            replyToId = replyToId,
+            quotedSender = quotedSender,
+            quotedPreview = quotedPreview,
+            waveformData = waveformData
         )
     }
 }
