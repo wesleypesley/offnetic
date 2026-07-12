@@ -65,6 +65,22 @@ data class ChatUiState(
     val error: String? = null
 )
 
+// Hold-to-record lifecycle (chat feature #5)
+sealed interface RecordState {
+    data object Idle : RecordState
+    data object Recording : RecordState
+    data object Locked : RecordState
+}
+
+// Shared playback state so bubbles render from one source of truth and audio
+// keeps playing when its bubble scrolls out of composition (chat feature #5)
+data class VoicePlaybackState(
+    val messageId: Long = -1L,
+    val isPlaying: Boolean = false,
+    val positionMs: Int = 0,
+    val durationMs: Int = 0
+)
+
 @HiltViewModel
 class ChatViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
@@ -196,6 +212,10 @@ class ChatViewModel @Inject constructor(
     }
     fun clearActive() {
         activeChatTracker.clearIfActive(contactPublicKey)
+        // Backgrounding cancels an in-progress recording (feature #5 edge case)
+        if (_recordState.value != RecordState.Idle) {
+            cancelVoiceRecording()
+        }
     }
 
     // Window of newest messages; grows by MESSAGE_PAGE_SIZE when the user scrolls
@@ -387,86 +407,230 @@ class ChatViewModel @Inject constructor(
         }
     }
 
-    fun toggleVoiceRecording() {
-        if (voiceNoteRecorder.isRecording) {
-            val elapsedMs = voiceNoteRecorder.elapsedMs
-            viewModelScope.launch {
-                val file = voiceNoteRecorder.stopRecording()
-                recordingGuard.set(false)
-                if (file != null && file.exists() && file.length() > 0) {
-                    val duration = formatVoiceDuration(elapsedMs)
-                    val identity = identityDao.getIdentity()
-                    val myPublicKey = identity?.publicKey ?: return@launch
+    // --- Voice note recording state machine (feature #5) ---
 
-                    val entity = com.offnetic.data.local.db.entity.Message(
-                        sessionId = contactPublicKey,
-                        chatId = contactPublicKey,
-                        senderPublicKey = myPublicKey,
-                        content = "Voice note  $duration",
-                        type = com.offnetic.data.local.db.entity.Message.TYPE_VOICE_NOTE,
-                        timestamp = System.currentTimeMillis(),
-                        deliveryState = MessageDeliveryState.SAVED,
-                        isRead = false,
-                        attachmentPath = file.absolutePath
-                    )
-                    val messageId = messageDao.insert(entity)
+    private val _recordState = MutableStateFlow<RecordState>(RecordState.Idle)
+    val recordState: StateFlow<RecordState> = _recordState.asStateFlow()
 
-                    val connectedEndpoints = ncapManager.getConnectedEndpointIds(contactPublicKey)
-                    if (connectedEndpoints.isNotEmpty()) {
-                        try {
-                            ncapManager.sendFile(
-                                connectedEndpoints.first(),
-                                file.absolutePath,
-                                file.name,
-                                file.length(),
-                                "audio/mp4",
-                                duration
-                            )
-                            val current = messageDao.getById(messageId)
-                            if (current?.type != com.offnetic.data.local.db.entity.Message.TYPE_CANCELLED) {
-                                messageDao.update(entity.copy(id = messageId, deliveryState = MessageDeliveryState.SENT_LOCAL))
-                            }
-                            Timber.d("Voice note sent to ${contactPublicKey.take(8)}")
-                        } catch (e: Exception) {
-                            Timber.e(e, "Voice note send failed")
-                            _toastMessage.emit("Voice note send failed — saved")
-                        }
-                    } else if (currentReachability() == ChatReachability.INTERNET_RELAY) {
-                        val npub = contactDao.getByPublicKey(contactPublicKey)?.nostrPublicKey
-                            ?: run { _toastMessage.emit("${_contactName.value} not reachable — voice note saved"); return@launch }
-                        val sent = withContext(Dispatchers.IO) { blossomFileService.sendFile(npub, file, "audio/mp4", entity.messageUuid, entity.content) }
-                        if (sent) {
-                            val cur = messageDao.getById(messageId)
-                            if (cur?.type != com.offnetic.data.local.db.entity.Message.TYPE_CANCELLED) {
-                                messageDao.update(entity.copy(id = messageId, deliveryState = MessageDeliveryState.SENT_RELAY))
-                            }
-                        } else {
-                            _toastMessage.emit("Upload failed (no server reachable) — voice note saved")
-                        }
-                    } else {
-                        Timber.w("No connected peer for voice note to ${contactPublicKey.take(8)}")
-                        _toastMessage.emit("${_contactName.value} not connected — voice note saved")
-                    }
+    private val _recordElapsedMs = MutableStateFlow(0L)
+    val recordElapsedMs: StateFlow<Long> = _recordElapsedMs.asStateFlow()
+
+    private val _liveWaveform = MutableStateFlow<List<Float>>(emptyList())
+    val liveWaveform: StateFlow<List<Float>> = _liveWaveform.asStateFlow()
+
+    private var recordLoopJob: kotlinx.coroutines.Job? = null
+    private val waveformSamples = mutableListOf<Float>()
+
+    fun startVoiceRecording() {
+        if (_recordState.value != RecordState.Idle) return
+        if (!recordingGuard.compareAndSet(false, true)) return
+        try {
+            voiceNoteRecorder.startRecording()
+            waveformSamples.clear()
+            _liveWaveform.value = emptyList()
+            _recordElapsedMs.value = 0L
+            _recordState.value = RecordState.Recording
+            _isRecording.value = true
+            recordLoopJob = viewModelScope.launch {
+                while (voiceNoteRecorder.isRecording) {
+                    kotlinx.coroutines.delay(100)
+                    waveformSamples.add((voiceNoteRecorder.maxAmplitude() / 32767f).coerceIn(0f, 1f))
+                    _liveWaveform.value = waveformSamples.toList()
+                    _recordElapsedMs.value = voiceNoteRecorder.elapsedMs
+                    // Peer sees a typing bubble while we record (feature #6);
+                    // onTyping() self-throttles to one signal per 2s
+                    onTyping()
+                }
+                // The recorder auto-stops at the duration/size cap: treat as send
+                if (_recordState.value != RecordState.Idle) {
+                    _toastMessage.emit(context.getString(com.offnetic.R.string.chat_voice_limit_sent))
+                    finishVoiceRecording()
                 }
             }
-        } else {
-            if (!recordingGuard.compareAndSet(false, true)) return
-            try {
-                voiceNoteRecorder.startRecording()
-                _isRecording.value = true
-                viewModelScope.launch {
-                    while (voiceNoteRecorder.isRecording) {
-                        _isRecording.value = true
-                        kotlinx.coroutines.delay(100)
+        } catch (e: Exception) {
+            Timber.e(e, "startVoiceRecording failed")
+            resetRecordingState()
+        }
+    }
+
+    fun lockVoiceRecording() {
+        if (_recordState.value == RecordState.Recording) {
+            _recordState.value = RecordState.Locked
+        }
+    }
+
+    fun cancelVoiceRecording() {
+        if (_recordState.value == RecordState.Idle) return
+        voiceNoteRecorder.cancelRecording()
+        resetRecordingState()
+    }
+
+    fun finishVoiceRecording() {
+        if (_recordState.value == RecordState.Idle) return
+        val elapsed = _recordElapsedMs.value
+        val waveform = quantizeWaveform()
+        // stopRecording() is null when the recorder already auto-stopped at the cap —
+        // lastCompletedFile holds that recording
+        val file = voiceNoteRecorder.stopRecording() ?: voiceNoteRecorder.lastCompletedFile
+        resetRecordingState()
+        if (file != null && file.exists() && file.length() > 0) {
+            sendVoiceNote(file, elapsed, waveform)
+        }
+    }
+
+    private fun resetRecordingState() {
+        recordLoopJob?.cancel()
+        recordLoopJob = null
+        _recordState.value = RecordState.Idle
+        _isRecording.value = false
+        _recordElapsedMs.value = 0L
+        waveformSamples.clear()
+        _liveWaveform.value = emptyList()
+        recordingGuard.set(false)
+    }
+
+    // One byte per 100ms sample, amplitude quantized 0..255 — a 2-min note is ~1.2KB
+    private fun quantizeWaveform(): ByteArray =
+        ByteArray(waveformSamples.size) { i -> (waveformSamples[i] * 255f).toInt().coerceIn(0, 255).toByte() }
+
+    private fun sendVoiceNote(file: java.io.File, elapsedMs: Long, waveform: ByteArray) {
+        viewModelScope.launch {
+            val duration = formatVoiceDuration(elapsedMs)
+            val identity = identityDao.getIdentity()
+            val myPublicKey = identity?.publicKey ?: return@launch
+
+            val entity = com.offnetic.data.local.db.entity.Message(
+                sessionId = contactPublicKey,
+                chatId = contactPublicKey,
+                senderPublicKey = myPublicKey,
+                content = "Voice note  $duration",
+                type = com.offnetic.data.local.db.entity.Message.TYPE_VOICE_NOTE,
+                timestamp = System.currentTimeMillis(),
+                deliveryState = MessageDeliveryState.SAVED,
+                isRead = false,
+                attachmentPath = file.absolutePath,
+                waveformData = waveform.takeIf { it.isNotEmpty() }
+            )
+            val messageId = messageDao.insert(entity)
+
+            val connectedEndpoints = ncapManager.getConnectedEndpointIds(contactPublicKey)
+            if (connectedEndpoints.isNotEmpty()) {
+                try {
+                    ncapManager.sendFile(
+                        connectedEndpoints.first(),
+                        file.absolutePath,
+                        file.name,
+                        file.length(),
+                        "audio/mp4",
+                        duration
+                    )
+                    val current = messageDao.getById(messageId)
+                    if (current?.type != com.offnetic.data.local.db.entity.Message.TYPE_CANCELLED) {
+                        messageDao.update(entity.copy(id = messageId, deliveryState = MessageDeliveryState.SENT_LOCAL))
                     }
-                    _isRecording.value = false
-                    recordingGuard.set(false)
+                    Timber.d("Voice note sent to ${contactPublicKey.take(8)}")
+                } catch (e: Exception) {
+                    Timber.e(e, "Voice note send failed")
+                    _toastMessage.emit("Voice note send failed — saved")
                 }
-            } catch (_: Exception) {
-                _isRecording.value = false
-                recordingGuard.set(false)
+            } else if (currentReachability() == ChatReachability.INTERNET_RELAY) {
+                val npub = contactDao.getByPublicKey(contactPublicKey)?.nostrPublicKey
+                    ?: run { _toastMessage.emit("${_contactName.value} not reachable — voice note saved"); return@launch }
+                val sent = withContext(Dispatchers.IO) { blossomFileService.sendFile(npub, file, "audio/mp4", entity.messageUuid, entity.content) }
+                if (sent) {
+                    val cur = messageDao.getById(messageId)
+                    if (cur?.type != com.offnetic.data.local.db.entity.Message.TYPE_CANCELLED) {
+                        messageDao.update(entity.copy(id = messageId, deliveryState = MessageDeliveryState.SENT_RELAY))
+                    }
+                } else {
+                    _toastMessage.emit("Upload failed (no server reachable) — voice note saved")
+                }
+            } else {
+                Timber.w("No connected peer for voice note to ${contactPublicKey.take(8)}")
+                _toastMessage.emit("${_contactName.value} not connected — voice note saved")
             }
         }
+    }
+
+    // --- Voice note playback, ViewModel-owned so it survives scroll (feature #5) ---
+
+    private val _voicePlayback = MutableStateFlow(VoicePlaybackState())
+    val voicePlayback: StateFlow<VoicePlaybackState> = _voicePlayback.asStateFlow()
+    private var voicePlayer: android.media.MediaPlayer? = null
+    private var playbackProgressJob: kotlinx.coroutines.Job? = null
+
+    fun toggleVoicePlayback(messageId: Long, path: String) {
+        val current = _voicePlayback.value
+        if (current.messageId == messageId && voicePlayer != null) {
+            // Pause resumes from position — never restarts (feature #5)
+            if (current.isPlaying) {
+                runCatching { voicePlayer?.pause() }
+                playbackProgressJob?.cancel()
+                _voicePlayback.update {
+                    it.copy(isPlaying = false, positionMs = runCatching { voicePlayer?.currentPosition ?: 0 }.getOrDefault(0))
+                }
+            } else {
+                runCatching { voicePlayer?.start() }
+                _voicePlayback.update { it.copy(isPlaying = true) }
+                startPlaybackProgressLoop()
+            }
+            return
+        }
+
+        // New target: only one voice note plays at a time
+        releaseVoicePlayer()
+        try {
+            val mp = android.media.MediaPlayer()
+            if (path.startsWith("content://")) {
+                mp.setDataSource(context, android.net.Uri.parse(path))
+            } else {
+                mp.setDataSource(path)
+            }
+            mp.prepare()
+            mp.setOnCompletionListener { releaseVoicePlayer() }
+            mp.start()
+            voicePlayer = mp
+            _voicePlayback.value = VoicePlaybackState(
+                messageId = messageId,
+                isPlaying = true,
+                positionMs = 0,
+                durationMs = mp.duration
+            )
+            startPlaybackProgressLoop()
+        } catch (e: Exception) {
+            Timber.e(e, "Voice playback failed")
+            releaseVoicePlayer()
+            viewModelScope.launch { _toastMessage.emit(context.getString(com.offnetic.R.string.chat_cannot_play_voice)) }
+        }
+    }
+
+    fun seekVoicePlayback(messageId: Long, fraction: Float) {
+        if (_voicePlayback.value.messageId != messageId) return
+        val mp = voicePlayer ?: return
+        val target = (mp.duration * fraction.coerceIn(0f, 1f)).toInt()
+        runCatching { mp.seekTo(target) }
+        _voicePlayback.update { it.copy(positionMs = target) }
+    }
+
+    private fun startPlaybackProgressLoop() {
+        playbackProgressJob?.cancel()
+        playbackProgressJob = viewModelScope.launch {
+            while (true) {
+                kotlinx.coroutines.delay(100)
+                val mp = voicePlayer ?: break
+                _voicePlayback.update {
+                    it.copy(positionMs = runCatching { mp.currentPosition }.getOrDefault(it.positionMs))
+                }
+            }
+        }
+    }
+
+    private fun releaseVoicePlayer() {
+        playbackProgressJob?.cancel()
+        playbackProgressJob = null
+        runCatching { voicePlayer?.release() }
+        voicePlayer = null
+        _voicePlayback.value = VoicePlaybackState()
     }
 
     fun markAsRead() {
@@ -754,6 +918,7 @@ class ChatViewModel @Inject constructor(
         if (voiceNoteRecorder.isRecording) {
             voiceNoteRecorder.cancelRecording()
         }
+        releaseVoicePlayer()
     }
 
     fun deleteMessage(messageId: Long) {

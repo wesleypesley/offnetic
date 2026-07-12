@@ -107,6 +107,13 @@
     <string name="chat_tap_to_open">Tap to open</string>
     <string name="chat_preview_failed">Could not load preview</string>
     <string name="chat_cannot_play_voice">Cannot play voice note</string>
+    <string name="chat_slide_to_cancel">◀ Slide to cancel</string>
+    <string name="chat_voice_limit_sent">Voice note sent (2 min limit)</string>
+    <string name="cd_record_voice">Record voice note</string>
+    <string name="cd_play">Play</string>
+    <string name="cd_pause">Pause</string>
+    <string name="cd_send_voice">Send voice note</string>
+    <string name="cd_discard_recording">Discard recording</string>
     <string name="chat_file_not_found">File not found</string>
     <string name="chat_no_app_for_file">No app can open this file</string>
     <string name="chat_cannot_open_file">Cannot open file</string>

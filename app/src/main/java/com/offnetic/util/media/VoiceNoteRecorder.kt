@@ -71,6 +71,18 @@ class VoiceNoteRecorder @Inject constructor(
         return outputFile!!
     }
 
+    /** File produced by the most recent stopRecording() — needed when the recorder
+     *  auto-stops itself at the duration/size cap (chat feature #5). */
+    var lastCompletedFile: File? = null
+        private set
+
+    /** Current input amplitude 0..32767, for live waveform sampling (feature #5). */
+    fun maxAmplitude(): Int = try {
+        recorder?.maxAmplitude ?: 0
+    } catch (_: Exception) {
+        0
+    }
+
     fun stopRecording(): File? {
         if (!isRecording) return null
 
@@ -89,6 +101,7 @@ class VoiceNoteRecorder @Inject constructor(
 
         val file = outputFile
         outputFile = null
+        lastCompletedFile = file
         Timber.d("Voice recording stopped: ${file?.length() ?: 0} bytes")
         return file
     }

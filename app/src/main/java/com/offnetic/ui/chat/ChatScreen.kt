@@ -41,6 +41,7 @@ import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.lazy.LazyColumn
@@ -54,6 +55,9 @@ import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Delete
@@ -72,9 +76,12 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.AnnotatedString
@@ -143,6 +150,7 @@ fun ChatScreen(
     val myPublicKey by viewModel.myPublicKey.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
     val isPeerTyping by viewModel.isPeerTyping.collectAsState()
+    val voicePlayback by viewModel.voicePlayback.collectAsState()
     val scope = rememberCoroutineScope()
 
     val context = LocalContext.current
@@ -283,7 +291,12 @@ fun ChatScreen(
                                 onDelete = { viewModel.deleteMessage(message.id) },
                                 onCancel = { viewModel.cancelMessage(message.id) },
                                 onRetry = { viewModel.retryMessage(message.id) },
-                                onReply = { viewModel.startReply(message) }
+                                onReply = { viewModel.startReply(message) },
+                                voicePlayback = voicePlayback,
+                                onToggleVoicePlay = {
+                                    message.attachmentPath?.let { viewModel.toggleVoicePlayback(message.id, it) }
+                                },
+                                onSeekVoice = { fraction -> viewModel.seekVoicePlayback(message.id, fraction) }
                             )
                         }
                         // Animated-dots bubble styled like their messages (feature #6)
@@ -331,41 +344,74 @@ fun ChatScreen(
             }
 
             val replyingTo by viewModel.replyingTo.collectAsState()
-            replyingTo?.let { reply ->
-                ReplyPreviewBar(
-                    reply = reply,
-                    isMine = reply.senderPublicKey == myPublicKey,
-                    contactName = contactName,
-                    onDismiss = { viewModel.clearReply() }
+            val recordState by viewModel.recordState.collectAsState()
+            val recordElapsedMs by viewModel.recordElapsedMs.collectAsState()
+            val liveWaveform by viewModel.liveWaveform.collectAsState()
+            val haptics = LocalHapticFeedback.current
+            val focusManager = LocalFocusManager.current
+
+            if (recordState != RecordState.Idle) {
+                // Recording replaces the input area entirely (feature #5)
+                RecordingOverlay(
+                    isLocked = recordState == RecordState.Locked,
+                    elapsedMs = recordElapsedMs,
+                    waveform = liveWaveform,
+                    onCancel = {
+                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        viewModel.cancelVoiceRecording()
+                    },
+                    onSend = { viewModel.finishVoiceRecording() }
+                )
+            } else {
+                replyingTo?.let { reply ->
+                    ReplyPreviewBar(
+                        reply = reply,
+                        isMine = reply.senderPublicKey == myPublicKey,
+                        contactName = contactName,
+                        onDismiss = { viewModel.clearReply() }
+                    )
+                }
+
+                InputBar(
+                    textInput = textInput,
+                    richEnabled = reachability != ChatReachability.OFFLINE,
+                    onTextChange = {
+                        if (it.length <= 5000) {
+                            // Signal typing only when text grows — paste of full message or
+                            // deletion shouldn't ping the peer (feature #6)
+                            if (it.length > textInput.length && it.isNotBlank()) viewModel.onTyping()
+                            textInput = it
+                        }
+                    },
+                    onSend = {
+                        if (textInput.isNotBlank()) {
+                            viewModel.sendTextMessage(textInput.trim())
+                            textInput = ""
+                            // Sending always returns to the bottom, even if scrolled up;
+                            // the messages.size effect then follows the new row (feature #7)
+                            if (messages.isNotEmpty()) {
+                                scope.launch { listState.animateScrollToItem(messages.size - 1) }
+                            }
+                        }
+                    },
+                    onAttachFile = { filePickerLauncher.launch("*/*") },
+                    onRecordStart = {
+                        // Keyboard dismisses when recording starts (feature #5)
+                        focusManager.clearFocus()
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        viewModel.startVoiceRecording()
+                    },
+                    onRecordLock = {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        viewModel.lockVoiceRecording()
+                    },
+                    onRecordCancel = {
+                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        viewModel.cancelVoiceRecording()
+                    },
+                    onRecordRelease = { viewModel.finishVoiceRecording() }
                 )
             }
-
-            InputBar(
-                textInput = textInput,
-                isRecording = isRecording,
-                richEnabled = reachability != ChatReachability.OFFLINE,
-                onTextChange = {
-                    if (it.length <= 5000) {
-                        // Signal typing only when text grows — paste of full message or
-                        // deletion shouldn't ping the peer (feature #6)
-                        if (it.length > textInput.length && it.isNotBlank()) viewModel.onTyping()
-                        textInput = it
-                    }
-                },
-                onSend = {
-                    if (textInput.isNotBlank()) {
-                        viewModel.sendTextMessage(textInput.trim())
-                        textInput = ""
-                        // Sending always returns to the bottom, even if scrolled up;
-                        // the messages.size effect then follows the new row (feature #7)
-                        if (messages.isNotEmpty()) {
-                            scope.launch { listState.animateScrollToItem(messages.size - 1) }
-                        }
-                    }
-                },
-                onAttachFile = { filePickerLauncher.launch("*/*") },
-                onToggleRecord = { viewModel.toggleVoiceRecording() }
-            )
         }
     }
 }
@@ -452,12 +498,14 @@ private fun ChatHeader(
 @Composable
 private fun InputBar(
     textInput: String,
-    isRecording: Boolean,
     richEnabled: Boolean,
     onTextChange: (String) -> Unit,
     onSend: () -> Unit,
     onAttachFile: () -> Unit,
-    onToggleRecord: () -> Unit
+    onRecordStart: () -> Unit,
+    onRecordLock: () -> Unit,
+    onRecordCancel: () -> Unit,
+    onRecordRelease: () -> Unit
 ) {
     // surfaceVariant separates the input zone from the message area, which sits
     // on `background`/`surface` (design polish)
@@ -480,18 +528,48 @@ private fun InputBar(
                 )
             }
 
-            IconButton(onClick = onToggleRecord, enabled = richEnabled || isRecording) {
-                Box(
-                    modifier = Modifier.size(16.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Canvas(modifier = Modifier.fillMaxSize()) {
-                        drawCircle(
-                            color = if (isRecording) OffneticColors.danger else if (richEnabled) OffneticColors.textMuted else OffneticColors.textHint,
-                            radius = size.minDimension / 2
+            // Hold to record; slide left to cancel, slide up to lock hands-free (feature #5)
+            val density = LocalDensity.current
+            val cancelThresholdPx = with(density) { 96.dp.toPx() }
+            val lockThresholdPx = with(density) { 72.dp.toPx() }
+            var dragAccum by remember { mutableStateOf(Offset.Zero) }
+            var gestureSettled by remember { mutableStateOf(false) }
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .pointerInput(richEnabled) {
+                        if (!richEnabled) return@pointerInput
+                        detectDragGesturesAfterLongPress(
+                            onDragStart = {
+                                dragAccum = Offset.Zero
+                                gestureSettled = false
+                                onRecordStart()
+                            },
+                            onDrag = { change, delta ->
+                                change.consume()
+                                if (!gestureSettled) {
+                                    dragAccum += delta
+                                    if (dragAccum.x < -cancelThresholdPx) {
+                                        gestureSettled = true
+                                        onRecordCancel()
+                                    } else if (dragAccum.y < -lockThresholdPx) {
+                                        gestureSettled = true
+                                        onRecordLock()
+                                    }
+                                }
+                            },
+                            onDragEnd = { if (!gestureSettled) onRecordRelease() },
+                            onDragCancel = { if (!gestureSettled) onRecordCancel() }
                         )
-                    }
-                }
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Mic,
+                    contentDescription = stringResource(R.string.cd_record_voice),
+                    tint = if (richEnabled) OffneticColors.textMuted else OffneticColors.textHint,
+                    modifier = Modifier.size(20.dp)
+                )
             }
 
             OutlinedTextField(
@@ -542,7 +620,10 @@ private fun MessageBubble(
     onDelete: () -> Unit = {},
     onCancel: () -> Unit = {},
     onRetry: () -> Unit = {},
-    onReply: () -> Unit = {}
+    onReply: () -> Unit = {},
+    voicePlayback: VoicePlaybackState = VoicePlaybackState(),
+    onToggleVoicePlay: () -> Unit = {},
+    onSeekVoice: (Float) -> Unit = {}
 ) {
     // Color asymmetry: mine gets the navy tint, theirs neutral gray — sender is
     // recognisable before reading (design polish)
@@ -619,74 +700,48 @@ private fun MessageBubble(
                             )
                         }
                         Message.TYPE_VOICE_NOTE -> {
-                            val context = LocalContext.current
-                            var isPlaying by remember { mutableStateOf(false) }
-                            var mediaPlayer by remember { mutableStateOf<android.media.MediaPlayer?>(null) }
-
-                            DisposableEffect(message.id) {
-                                onDispose {
-                                    mediaPlayer?.release()
-                                }
-                            }
+                            // Playback state lives in the ViewModel so audio survives
+                            // scrolling this bubble out of composition (feature #5)
+                            val isActive = voicePlayback.messageId == message.id
+                            val playing = isActive && voicePlayback.isPlaying
+                            val fraction = if (isActive && voicePlayback.durationMs > 0) {
+                                voicePlayback.positionMs / voicePlayback.durationMs.toFloat()
+                            } else 0f
 
                             Row(
                                 modifier = Modifier.combinedClickable(
-                                    onClick = {
-                                    if (isPlaying) {
-                                        mediaPlayer?.stop()
-                                        mediaPlayer?.release()
-                                        mediaPlayer = null
-                                        isPlaying = false
-                                    } else {
-                                        val path = message.attachmentPath
-                                        if (path != null) {
-                                            // Player is tracked before configuration so a throw
-                                            // from prepare()/start() can release it (D1)
-                                            var mp: android.media.MediaPlayer? = null
-                                            try {
-                                                mp = android.media.MediaPlayer()
-                                                if (path.startsWith("content://")) {
-                                                    mp.setDataSource(context, android.net.Uri.parse(path))
-                                                } else {
-                                                    mp.setDataSource(path)
-                                                }
-                                                mp.prepare()
-                                                mp.setOnCompletionListener {
-                                                    it.release()
-                                                    mediaPlayer = null
-                                                    isPlaying = false
-                                                }
-                                                mp.start()
-                                                mediaPlayer = mp
-                                                isPlaying = true
-                                            } catch (_: Exception) {
-                                                mp?.release()
-                                                Toast.makeText(context, context.getString(R.string.chat_cannot_play_voice), Toast.LENGTH_SHORT).show()
-                                            }
-                                        }
-                                    }
-                                },
-                                onLongClick = { showMenu = true }
-                            ),
+                                    onClick = { if (message.attachmentPath != null) onToggleVoicePlay() },
+                                    onLongClick = { showMenu = true }
+                                ),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Box(
-                                    modifier = Modifier.size(12.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Canvas(modifier = Modifier.fillMaxSize()) {
-                                        drawCircle(
-                                            color = if (isPlaying) OffneticColors.danger else OffneticColors.accentGreen,
-                                            radius = size.minDimension / 2
-                                        )
-                                    }
-                                }
+                                Icon(
+                                    imageVector = if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                    contentDescription = stringResource(if (playing) R.string.cd_pause else R.string.cd_play),
+                                    tint = OffneticColors.accentGreen,
+                                    modifier = Modifier.size(28.dp)
+                                )
                                 Spacer(modifier = Modifier.width(Spacing.sm))
-                            Text(
-                                text = message.content,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = OffneticColors.textSubtle
-                            )
+                                Column {
+                                    WaveformSeekBar(
+                                        samples = message.waveformData?.map { (it.toInt() and 0xFF) / 255f },
+                                        progress = fraction,
+                                        enabled = isActive,
+                                        onSeek = onSeekVoice,
+                                        modifier = Modifier
+                                            .width(160.dp)
+                                            .height(24.dp)
+                                    )
+                                    Text(
+                                        text = if (isActive) {
+                                            "${formatPlaybackTime(voicePlayback.positionMs)} / ${formatPlaybackTime(voicePlayback.durationMs)}"
+                                        } else {
+                                            message.content.removePrefix("Voice note").trim()
+                                        },
+                                        fontSize = 10.sp,
+                                        color = OffneticColors.textSubtle
+                                    )
+                                }
                             }
                         }
                         Message.TYPE_FILE, Message.TYPE_IMAGE, Message.TYPE_VIDEO -> {
@@ -1204,6 +1259,154 @@ private fun formatTime(timestamp: Long): String = timeFormatter.format(Date(time
 
 // Messages from the same sender within this window merge into one group (feature #1)
 private const val GROUP_WINDOW_MS = 5L * 60 * 1000
+
+// Recording UI that replaces the input bar while holding the mic (feature #5)
+@Composable
+private fun RecordingOverlay(
+    isLocked: Boolean,
+    elapsedMs: Long,
+    waveform: List<Float>,
+    onCancel: () -> Unit,
+    onSend: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().navigationBarsPadding(),
+        color = MaterialTheme.colorScheme.surfaceVariant
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = Spacing.md, vertical = Spacing.sm),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            PulsingRecordDot()
+            Spacer(modifier = Modifier.width(Spacing.sm))
+            Text(
+                text = formatPlaybackTime(elapsedMs.toInt()),
+                style = MaterialTheme.typography.bodySmall,
+                color = OffneticColors.textStrong
+            )
+            Spacer(modifier = Modifier.width(Spacing.md))
+            LiveWaveform(
+                samples = waveform,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(28.dp)
+            )
+            Spacer(modifier = Modifier.width(Spacing.md))
+            if (isLocked) {
+                IconButton(onClick = onCancel) {
+                    Icon(
+                        imageVector = Icons.Outlined.Delete,
+                        contentDescription = stringResource(R.string.cd_discard_recording),
+                        tint = OffneticColors.danger,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+                IconButton(onClick = onSend) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_send),
+                        contentDescription = stringResource(R.string.cd_send_voice),
+                        tint = OffneticColors.accentGreen
+                    )
+                }
+            } else {
+                Text(
+                    text = stringResource(R.string.chat_slide_to_cancel),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = OffneticColors.textMuted
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PulsingRecordDot() {
+    val transition = rememberInfiniteTransition(label = "recDot")
+    val alpha by transition.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(500), RepeatMode.Reverse),
+        label = "recDotAlpha"
+    )
+    Box(
+        modifier = Modifier
+            .size(10.dp)
+            .background(OffneticColors.danger.copy(alpha = alpha), CircleShape)
+    )
+}
+
+// Rolling amplitude bars while recording (feature #5)
+@Composable
+private fun LiveWaveform(samples: List<Float>, modifier: Modifier = Modifier) {
+    val bars = samples.takeLast(40)
+    Canvas(modifier = modifier) {
+        if (bars.isEmpty()) return@Canvas
+        val slot = size.width / 40
+        bars.forEachIndexed { i, amp ->
+            val h = amp.coerceAtLeast(0.06f) * size.height
+            drawRoundRect(
+                color = OffneticColors.textStrong,
+                topLeft = Offset(i * slot + slot * 0.2f, (size.height - h) / 2f),
+                size = Size(slot * 0.6f, h),
+                cornerRadius = CornerRadius(2f, 2f)
+            )
+        }
+    }
+}
+
+// Waveform with played/unplayed split and tap/drag seeking; falls back to a plain
+// progress track for messages recorded before waveforms existed (feature #5)
+@Composable
+private fun WaveformSeekBar(
+    samples: List<Float>?,
+    progress: Float,
+    enabled: Boolean,
+    onSeek: (Float) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Canvas(
+        modifier = modifier.pointerInput(enabled) {
+            if (!enabled) return@pointerInput
+            detectTapGestures(onTap = { pos ->
+                onSeek((pos.x / size.width).coerceIn(0f, 1f))
+            })
+        }
+    ) {
+        val playedColor = OffneticColors.accentGreen
+        val restColor = OffneticColors.textHint
+        if (samples.isNullOrEmpty()) {
+            // Fallback: thin progress track
+            val y = size.height / 2f
+            drawLine(restColor, Offset(0f, y), Offset(size.width, y), strokeWidth = 3f)
+            if (progress > 0f) {
+                drawLine(playedColor, Offset(0f, y), Offset(size.width * progress, y), strokeWidth = 3f)
+            }
+            return@Canvas
+        }
+        // Downsample to at most 40 bars
+        val barCount = minOf(40, samples.size)
+        val step = samples.size / barCount.toFloat()
+        val slot = size.width / barCount
+        for (i in 0 until barCount) {
+            val amp = samples[(i * step).toInt().coerceAtMost(samples.lastIndex)]
+            val h = amp.coerceAtLeast(0.08f) * size.height
+            val barFraction = (i + 0.5f) / barCount
+            drawRoundRect(
+                color = if (barFraction <= progress) playedColor else restColor,
+                topLeft = Offset(i * slot + slot * 0.2f, (size.height - h) / 2f),
+                size = Size(slot * 0.6f, h),
+                cornerRadius = CornerRadius(2f, 2f)
+            )
+        }
+    }
+}
+
+private fun formatPlaybackTime(ms: Int): String {
+    val totalSec = ms / 1000
+    return "${totalSec / 60}:${(totalSec % 60).toString().padStart(2, '0')}"
+}
 
 // Their-style bubble containing three pulsing dots (feature #6). Styling matches
 // MessageBubble's "theirs" appearance so an arriving real message causes no jump.
